@@ -4,7 +4,7 @@
   color-scheme: light;
   font-family: var(--font-family);
   color: var(--color-light-text-primary);
-  background-color: var(--color-light-base-bg-primary);
+  background-color: var(--color-light-base-bg-secondary);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -19,6 +19,15 @@
 
 body {
   margin: var(--gap-0);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: var(--gap-2) solid var(--focus-color);
+  outline-offset: var(--gap-4);
 }
 
 #root {
