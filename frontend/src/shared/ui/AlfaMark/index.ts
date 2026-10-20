@@ -1,0 +1,1 @@
+export { AlfaMark } from './AlfaMark'

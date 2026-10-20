@@ -1,2 +1,5 @@
 export { PagePlaceholder } from './PagePlaceholder'
 export type { PagePlaceholderProps } from './PagePlaceholder'
+export { AlfaMark } from './AlfaMark'
+export { Panel } from './Panel'
+export type { PanelProps } from './Panel'
