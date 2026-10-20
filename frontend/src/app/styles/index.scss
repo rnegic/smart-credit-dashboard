@@ -1,0 +1,28 @@
+@import '@alfalab/core-components-vars/index.css';
+
+:root {
+  color-scheme: light;
+  font-family: var(--font-family);
+  color: var(--color-light-text-primary);
+  background-color: var(--color-light-base-bg-primary);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: var(--gap-0);
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  min-block-size: 100svh;
+}
