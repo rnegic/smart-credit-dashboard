@@ -1,5 +1,8 @@
 export const ROUTES = {
   dashboard: '/',
+  applications: '/applications',
+  credits: '/credits',
+  documents: '/documents',
   catalog: '/products',
   productDetails: (id = ':id') => `/products/${id}`,
   application: {

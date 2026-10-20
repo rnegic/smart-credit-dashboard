@@ -1,0 +1,13 @@
+.page,
+.heading {
+  display: flex;
+  flex-direction: column;
+}
+
+.page {
+  gap: var(--gap-32);
+}
+
+.heading {
+  gap: var(--gap-12);
+}
