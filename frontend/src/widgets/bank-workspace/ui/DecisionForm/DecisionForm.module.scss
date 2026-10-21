@@ -1,0 +1,62 @@
+.form,
+.alternative {
+  display: grid;
+  gap: var(--gap-20);
+  min-inline-size: 0;
+}
+
+.form {
+  padding-block-start: var(--gap-24);
+  border-block-start: calc(var(--gap-2) / 2) solid
+    var(--color-light-neutral-translucent-100);
+}
+
+.choices {
+  display: grid;
+  gap: var(--gap-12);
+  min-inline-size: 0;
+  padding: var(--gap-0);
+  margin: var(--gap-0);
+  border: 0;
+}
+
+.legend {
+  padding: var(--gap-0);
+  margin-block-end: var(--gap-12);
+  font-size: var(--gap-20);
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap-12);
+  padding: var(--gap-16);
+  border-radius: var(--border-radius-12);
+  background: var(--color-light-base-bg-secondary);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.choice input {
+  flex-shrink: 0;
+  margin: var(--gap-4) var(--gap-0) var(--gap-0);
+  accent-color: var(--color-light-text-primary);
+}
+
+.choices:disabled .choice {
+  cursor: var(--disabled-cursor);
+}
+
+.note,
+.error {
+  margin: var(--gap-0);
+  overflow-wrap: anywhere;
+}
+
+.note {
+  color: var(--color-light-text-secondary);
+}
+
+.error {
+  color: var(--color-light-status-negative);
+}
