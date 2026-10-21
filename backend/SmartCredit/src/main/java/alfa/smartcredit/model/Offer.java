@@ -1,0 +1,29 @@
+package alfa.smartcredit.model;
+
+import alfa.smartcredit.model.enums.OfferStatus;
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+@Entity
+@Table(name = "offers")
+@Getter
+@Setter
+@NoArgsConstructor
+public class Offer {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    @Column(name = "company_id") private Long companyId;
+    @Column(name = "application_id") private Long applicationId;
+    private BigDecimal amount;
+    @Column(name = "term_months") private Integer termMonths;
+    @Column(name = "rate_percent") private BigDecimal ratePercent;
+    @Column(name = "monthly_payment") private BigDecimal monthlyPayment;
+    @Column(name = "valid_until") private LocalDate validUntil;
+    @Enumerated(EnumType.STRING) private OfferStatus status;
+}

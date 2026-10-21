@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/credit_cabinet
+    username: app
+    password: secret
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  jackson:
+    default-property-inclusion: always
+server:
+  servlet:
+    session:
+      timeout: 2h
+app:
+  cors:
+    allowed-origin: http://localhost:5173
