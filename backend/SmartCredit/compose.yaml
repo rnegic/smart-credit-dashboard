@@ -1,20 +1,14 @@
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/credit_cabinet
-    username: app
-    password: secret
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-  flyway:
-    enabled: true
-  jackson:
-    default-property-inclusion: always
-server:
-  servlet:
-    session:
-      timeout: 2h
-app:
-  cors:
-    allowed-origin: http://localhost:5173
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: credit_cabinet
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

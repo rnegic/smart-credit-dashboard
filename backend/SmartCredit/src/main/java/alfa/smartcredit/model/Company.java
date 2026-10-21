@@ -22,4 +22,6 @@ public class Company {
     private String okved;
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
+    @Column(name = "legal_form")
+    private String legalForm;   // "IP" | "OOO" | null
 }

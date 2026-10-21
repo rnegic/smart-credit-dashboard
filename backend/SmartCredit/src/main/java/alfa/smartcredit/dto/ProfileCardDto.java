@@ -1,4 +1,3 @@
 package alfa.smartcredit.dto;
 
-public class ProfileCardDto {
-}
+public record ProfileCardDto(String id, String title, String description) {}

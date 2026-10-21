@@ -24,4 +24,13 @@ public class CreditApplication {
     private String purpose;
     @Enumerated(EnumType.STRING) private ApplicationStatus status;
     @Column(name = "created_at") private Instant createdAt = Instant.now();
+
+    @Column(name = "risk_score")
+    private Integer riskScore;
+    @Column(name = "risk_class")
+    private String riskClass;
+    @Column(name = "ai_comment")
+    private String aiComment;
+    @Column(name = "officer_comment")
+    private String officerComment;
 }

@@ -1,4 +1,3 @@
 package alfa.smartcredit.dto;
 
-public class SessionResponse {
-}
+public record SessionResponse(boolean authenticated, Long companyId, String companyName, String profileId) {}
