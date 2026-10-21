@@ -1,0 +1,13 @@
+.page {
+  max-inline-size: 90rem;
+  margin-inline: auto;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--gap-32);
+}
+
+@media (max-width: 43.99rem) {
+  .page {
+    padding: var(--gap-16);
+  }
+}

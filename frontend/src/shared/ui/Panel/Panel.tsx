@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useId, type ReactNode, type RefObject } from 'react'
 import { SidePanel } from '@alfalab/core-components/side-panel'
 import { CrossMIcon } from '@alfalab/icons/glyph/dist/CrossMIcon'
 import styles from './Panel.module.scss'
@@ -9,9 +9,19 @@ export interface PanelProps {
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  dismissible?: boolean
+  returnFocusRef?: RefObject<HTMLElement | null>
 }
 
-export function Panel({ open, title, onClose, children, footer }: PanelProps) {
+export function Panel({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  dismissible = true,
+  returnFocusRef,
+}: PanelProps) {
   const titleId = useId()
 
   return (
@@ -20,10 +30,21 @@ export function Panel({ open, title, onClose, children, footer }: PanelProps) {
       onClose={onClose}
       className={styles.panel}
       scrollLock
+      disableEscapeKeyDown={!dismissible}
+      onUnmount={() => {
+        if (returnFocusRef)
+          requestAnimationFrame(() => {
+            if (
+              returnFocusRef.current?.isConnected &&
+              !document.querySelector('[role="dialog"]')
+            )
+              returnFocusRef.current.focus()
+          })
+      }}
       wrapperProps={{ 'aria-labelledby': titleId }}
     >
       <SidePanel.Header
-        hasCloser
+        hasCloser={dismissible}
         closerProps={{
           icon: () => <CrossMIcon aria-hidden="true" />,
           'aria-label': 'Закрыть панель',

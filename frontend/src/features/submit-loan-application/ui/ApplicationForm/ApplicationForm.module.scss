@@ -1,0 +1,125 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-24);
+  padding: var(--gap-24);
+  border-radius: var(--border-radius-24);
+  background: var(--color-light-base-bg-primary);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.card p,
+.form p {
+  margin: var(--gap-0);
+  color: var(--color-light-neutral-700-press);
+}
+.actions,
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-12);
+}
+.footer {
+  justify-content: space-between;
+  inline-size: 100%;
+}
+.modal {
+  --color-light-text-secondary: var(--color-light-neutral-700-press);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-24);
+  padding-block: var(--gap-24);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.stepper {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap-16);
+  padding: var(--gap-0);
+  margin: var(--gap-0);
+  list-style: none;
+}
+.stepper li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--gap-8);
+  color: var(--color-light-neutral-700-press);
+}
+.stepper span {
+  display: grid;
+  place-items: center;
+  inline-size: var(--gap-24);
+  block-size: var(--gap-24);
+  border-radius: var(--border-radius-circle);
+  background: var(--color-light-base-bg-secondary);
+  flex-shrink: 0;
+}
+.stepper .currentStep {
+  color: var(--color-light-text-primary);
+  font-weight: 600;
+}
+.currentStep span {
+  background: var(--color-light-neutral-translucent-200);
+}
+.stepTitle {
+  margin: var(--gap-0);
+  font-family: var(--font-family-system);
+  font-size: var(--gap-24);
+  line-height: 1.3;
+}
+.fields {
+  display: grid;
+  gap: var(--gap-24);
+}
+.context {
+  display: grid;
+  gap: var(--gap-8);
+  padding: var(--gap-16);
+  background: var(--color-light-base-bg-secondary);
+  border-radius: var(--border-radius-16);
+  white-space: pre-wrap;
+}
+.summary {
+  display: grid;
+  gap: var(--gap-20);
+  margin: var(--gap-0);
+}
+.summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-24);
+}
+.summary dt {
+  color: var(--color-light-neutral-700-press);
+}
+.summary dd {
+  margin: var(--gap-0);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 47.99rem) {
+  .actions > button,
+  .footer > button {
+    inline-size: 100%;
+  }
+  .footer {
+    flex-direction: column-reverse;
+  }
+  .stepper {
+    gap: var(--gap-8);
+  }
+  .stepper li {
+    flex-direction: column;
+    font-size: var(--gap-12);
+  }
+  .summary > div {
+    flex-direction: column;
+    gap: var(--gap-8);
+  }
+  .summary dd {
+    text-align: start;
+  }
+}

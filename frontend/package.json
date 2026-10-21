@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
+    "test:session": "node --test src/shared/api/session.integration.test.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -20,7 +21,8 @@
     "@tanstack/react-query": "^5.104.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

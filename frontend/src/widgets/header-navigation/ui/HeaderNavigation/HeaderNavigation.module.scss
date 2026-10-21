@@ -33,16 +33,31 @@
 }
 
 .companyButton {
+  min-inline-size: 0;
   justify-self: start;
   margin-inline-start: var(--gap-24);
   max-inline-size: 100%;
 }
 
+.companyLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
 .companyText {
+  min-inline-size: 0;
+  max-inline-size: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--gap-2);
+}
+
+.companyText > span {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .avatar {
@@ -165,7 +180,7 @@
 }
 
 .textLink {
-  color: var(--color-light-text-info);
+  color: var(--color-light-text-primary);
   text-underline-offset: var(--gap-4);
 }
 
@@ -208,6 +223,10 @@
 
   .avatar,
   .companyActivity,
+  .notificationControl {
+    display: none;
+  }
+
   .headerActions {
     gap: var(--gap-0);
   }

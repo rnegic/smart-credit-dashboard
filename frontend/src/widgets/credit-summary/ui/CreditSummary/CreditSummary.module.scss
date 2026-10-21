@@ -14,6 +14,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--gap-12);
+  overflow-wrap: anywhere;
 }
 
 .icon {
@@ -25,4 +26,28 @@
   border-radius: var(--border-radius-16);
   background: var(--color-light-base-bg-secondary);
   color: var(--color-light-text-secondary);
+}
+
+.parameters {
+  display: grid;
+  gap: var(--gap-12);
+  inline-size: 100%;
+  margin: var(--gap-0);
+}
+
+.parameters > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-8) var(--gap-16);
+}
+
+.parameters dt {
+  color: var(--color-light-text-secondary);
+}
+
+.parameters dd {
+  margin: var(--gap-0);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }

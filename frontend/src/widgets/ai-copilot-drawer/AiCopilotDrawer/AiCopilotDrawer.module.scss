@@ -7,9 +7,9 @@
 }
 
 .launcher {
-  --button-primary-base-bg-color: #8b5cf6;
-  --button-primary-hover-bg-color: #7c3aed;
-  --button-primary-active-bg-color: #6d28d9;
+  --button-primary-base-bg-color: var(--color-static-brand-violet);
+  --button-primary-hover-bg-color: var(--color-light-go-violet);
+  --button-primary-active-bg-color: var(--color-light-go-violet);
   --button-primary-mobile-base-bg-color: var(--button-primary-base-bg-color);
   --button-primary-mobile-hover-bg-color: var(--button-primary-hover-bg-color);
   --button-primary-mobile-active-bg-color: var(
@@ -32,13 +32,6 @@
   gap: var(--gap-8);
   min-inline-size: var(--gap-0);
   overflow-wrap: anywhere;
-}
-
-.demoBadge {
-  padding: var(--gap-4) var(--gap-8);
-  border-radius: var(--border-radius-8);
-  color: var(--color-light-text-secondary);
-  background-color: var(--color-light-neutral-translucent-200);
 }
 
 .body {

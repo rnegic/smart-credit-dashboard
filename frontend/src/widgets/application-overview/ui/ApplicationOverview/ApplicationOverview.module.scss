@@ -1,4 +1,6 @@
 .card {
+  container-type: inline-size;
+  min-inline-size: 0;
   overflow: hidden;
   border: 1px solid var(--color-light-neutral-translucent-100);
   border-radius: var(--border-radius-24);
@@ -30,11 +32,16 @@
   block-size: var(--gap-16);
 }
 
+.declined {
+  background: var(--color-light-status-muted-negative);
+}
+
 .heading {
   display: flex;
   flex-direction: column;
   gap: var(--gap-12);
   padding: var(--gap-24) var(--gap-32) var(--gap-0);
+  overflow-wrap: anywhere;
 }
 
 .amount {
@@ -54,6 +61,16 @@
   display: none;
   flex-direction: column;
   gap: var(--gap-16);
+}
+
+/* Empty step labels still reserve space in the kit's horizontal layout. */
+.mobileSteps .steps > [role='button'] > :nth-child(2) {
+  display: none;
+}
+
+.mobileSteps .steps > [role='button'] > :nth-child(3) {
+  min-inline-size: var(--gap-8);
+  margin-inline-end: var(--gap-4);
 }
 
 .screenReaderOnly {
@@ -86,6 +103,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--gap-4);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
 }
 
 .detailsButton {
@@ -107,7 +126,7 @@
 
 .parameters > div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--gap-16);
 }
 
@@ -117,6 +136,8 @@
 
 .parameters dd {
   margin: var(--gap-0);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 .notice {
@@ -129,6 +150,16 @@
   .bottomline {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@container (max-width: 59.99rem) {
+  .desktopSteps {
+    display: none;
+  }
+
+  .mobileSteps {
+    display: flex;
   }
 }
 
@@ -146,16 +177,12 @@
     padding: var(--gap-24) var(--gap-20);
   }
 
-  .desktopSteps {
-    display: none;
-  }
-
-  .mobileSteps {
-    display: flex;
-  }
-
   .detailsButton {
     inline-size: 100%;
+  }
+
+  .amount {
+    white-space: normal;
   }
 
   .parameters > div {

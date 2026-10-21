@@ -1,5 +1,5 @@
 import { Typography } from '@alfalab/core-components/typography'
-import { ApplicationOverview } from '@/widgets/application-overview'
+import { ApplicationList } from '@/widgets/application-overview'
 import { ApplicationDocuments } from '@/widgets/application-documents'
 import { CreditSummary } from '@/widgets/credit-summary'
 import styles from './CabinetSections.module.scss'
@@ -20,7 +20,7 @@ export function ApplicationsPage() {
           Статус рассмотрения и следующие шаги.
         </Typography.Text>
       </header>
-      <ApplicationOverview />
+      <ApplicationList />
     </main>
   )
 }
@@ -59,7 +59,7 @@ export function DocumentsPage() {
           Документы
         </Typography.TitleResponsive>
         <Typography.Text tag="p" color="secondary">
-          Все переданные сведения в одном месте.
+          Доступность документов по кредитному процессу.
         </Typography.Text>
       </header>
       <ApplicationDocuments />

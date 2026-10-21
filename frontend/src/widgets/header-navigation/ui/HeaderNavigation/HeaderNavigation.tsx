@@ -11,23 +11,22 @@ import { DocumentMIcon } from '@alfalab/icons/glyph/dist/DocumentMIcon'
 import { FolderMIcon } from '@alfalab/icons/glyph/dist/FolderMIcon'
 import { HouseMIcon } from '@alfalab/icons/glyph/dist/HouseMIcon'
 import { InformationCircleLineMIcon } from '@alfalab/icons/glyph/dist/InformationCircleLineMIcon'
-import { LogOutMIcon } from '@alfalab/icons/glyph/dist/LogOutMIcon'
 import { WalletMIcon } from '@alfalab/icons/glyph/dist/WalletMIcon'
-import { demoCompany } from '@/entities/company'
-import { demoApplication, demoDocuments } from '@/entities/loan-application'
+import { useDashboard } from '@/entities/dashboard'
+import { useApplications } from '@/entities/loan-application'
+import { SessionActions } from '@/features/demo-session'
 import { ROUTES } from '@/shared/config'
 import { AlfaMark, Panel } from '@/shared/ui'
 import styles from './HeaderNavigation.module.scss'
 
 const items = [
   { path: ROUTES.dashboard, label: 'Главная', Icon: HouseMIcon },
-  { path: ROUTES.applications, label: 'Заявки', Icon: DocumentMIcon, count: 1 },
+  { path: ROUTES.applications, label: 'Заявки', Icon: DocumentMIcon },
   { path: ROUTES.credits, label: 'Кредиты и лимиты', Icon: WalletMIcon },
   {
     path: ROUTES.documents,
     label: 'Документы',
     Icon: FolderMIcon,
-    count: demoDocuments.length,
   },
 ]
 
@@ -36,9 +35,10 @@ export interface NavigationProps {
 }
 
 function Navigation({ onNavigate }: NavigationProps) {
+  const applications = useApplications()
   return (
     <nav aria-label="Основная навигация" className={styles.navigation}>
-      {items.map(({ path, label, Icon, count }) => (
+      {items.map(({ path, label, Icon }) => (
         <NavLink
           key={path}
           to={path}
@@ -52,13 +52,15 @@ function Navigation({ onNavigate }: NavigationProps) {
           <Typography.Text view="primary-small" weight="medium">
             {label}
           </Typography.Text>
-          {count !== undefined && (
-            <Badge
-              view="count"
-              content={count}
-              color="specialbg-secondary-transparent"
-            />
-          )}
+          {path === ROUTES.applications &&
+            applications.data &&
+            !applications.error && (
+              <Badge
+                view="count"
+                content={applications.data.length}
+                color="specialbg-secondary-transparent"
+              />
+            )}
         </NavLink>
       ))}
     </nav>
@@ -69,7 +71,17 @@ export function HeaderNavigation() {
   const [panel, setPanel] = useState<
     'menu' | 'notifications' | 'profile' | null
   >(null)
-  const [notificationRead, setNotificationRead] = useState(false)
+  const dashboard = useDashboard()
+  const company = dashboard.error ? undefined : dashboard.data?.company
+  const count = dashboard.error
+    ? undefined
+    : dashboard.data?.unreadNotifications
+  const companyName = company?.name ?? 'Кредитный кабинет'
+  const companyDetails = company
+    ? `ИНН ${company.inn}${company.okved ? ` · ОКВЭД ${company.okved}` : ''}`
+    : dashboard.error
+      ? 'Не удалось загрузить данные компании'
+      : 'Данные компании загружаются'
   const closePanel = () => setPanel(null)
 
   return (
@@ -98,8 +110,8 @@ export function HeaderNavigation() {
           view="transparent"
           size={56}
           className={styles.companyButton}
+          labelClassName={styles.companyLabel}
           onClick={() => setPanel('profile')}
-          aria-label="Профиль компании"
           leftAddons={
             <span className={styles.avatar}>
               <BriefcaseMIcon aria-hidden="true" />
@@ -109,14 +121,14 @@ export function HeaderNavigation() {
         >
           <span className={styles.companyText}>
             <Typography.Text view="primary-small" weight="bold">
-              {demoCompany.name}
+              {companyName}
             </Typography.Text>
             <Typography.Text
               view="secondary-medium"
               color="secondary"
               className={styles.companyActivity}
             >
-              {demoCompany.activity}
+              {companyDetails}
             </Typography.Text>
           </span>
         </Button>
@@ -126,21 +138,17 @@ export function HeaderNavigation() {
               view="transparent"
               size={48}
               aria-label={
-                notificationRead
-                  ? 'Уведомления'
-                  : 'Уведомления, 1 непрочитанное'
+                count ? `Уведомления, непрочитанных: ${count}` : 'Уведомления'
               }
               onClick={() => setPanel('notifications')}
             >
               <BellMIcon aria-hidden="true" />
             </Button>
-            {!notificationRead && (
+            {!!count && (
               <span className={styles.notificationDot} aria-hidden="true" />
             )}
           </span>
-          <Button view="transparent" size={48} aria-label="Выйти">
-            <LogOutMIcon aria-hidden="true" />
-          </Button>
+          <SessionActions compact />
         </div>
       </header>
 
@@ -159,7 +167,7 @@ export function HeaderNavigation() {
               Ваш бизнес
             </Typography.Text>
             <Typography.Text view="primary-small" weight="medium">
-              {demoCompany.name}
+              {companyName}
             </Typography.Text>
           </div>
           <Button
@@ -168,7 +176,7 @@ export function HeaderNavigation() {
             leftAddons={<InformationCircleLineMIcon aria-hidden="true" />}
             onClick={() => setPanel('profile')}
           >
-            О демоверсии
+            О компании
           </Button>
         </div>
       </aside>
@@ -179,6 +187,15 @@ export function HeaderNavigation() {
         onClose={closePanel}
       >
         <Navigation onNavigate={closePanel} />
+        <div className={styles.panelContent}>
+          <Button
+            view="secondary"
+            block
+            onClick={() => setPanel('notifications')}
+          >
+            Уведомления{count ? ` (${count})` : ''}
+          </Button>
+        </div>
       </Panel>
       <Panel
         open={panel === 'profile'}
@@ -187,64 +204,53 @@ export function HeaderNavigation() {
       >
         <div className={styles.panelContent}>
           <Typography.TitleResponsive tag="h2" view="small" font="system">
-            {demoCompany.name}
+            {companyName}
           </Typography.TitleResponsive>
           <Typography.Text tag="p" color="secondary">
-            {demoCompany.activity}
+            {companyDetails}
           </Typography.Text>
-          <div className={styles.panelNotice}>
-            <Typography.Text tag="p" weight="medium">
-              {demoCompany.profileLabel}
-            </Typography.Text>
-            <Typography.Text tag="p" view="primary-small" color="secondary">
-              Компания, заявка и документы - демонстрационные данные
-            </Typography.Text>
-          </div>
+          {company && (
+            <div className={styles.panelNotice}>
+              <Typography.Text tag="p" weight="medium">
+                Форма бизнеса
+              </Typography.Text>
+              <Typography.Text tag="p" view="primary-small" color="secondary">
+                {company.legalForm === 'IP'
+                  ? 'Индивидуальный предприниматель (ИП)'
+                  : company.legalForm === 'OOO'
+                    ? 'Общество с ограниченной ответственностью (ООО)'
+                    : company.legalForm ?? 'Не указана'}
+              </Typography.Text>
+            </div>
+          )}
+          <SessionActions />
         </div>
       </Panel>
       <Panel
         open={panel === 'notifications'}
         title="Уведомления"
         onClose={closePanel}
-        footer={
-          !notificationRead && (
-            <Button
-              view="secondary"
-              block
-              onClick={() => setNotificationRead(true)}
-            >
-              Отметить прочитанным
-            </Button>
-          )
-        }
       >
         <div className={styles.panelContent}>
           <Typography.Text view="secondary-medium" color="secondary">
-            {demoApplication.submittedLabel}
+            {count === undefined
+              ? 'Счетчик недоступен'
+              : `Непрочитанных уведомлений: ${count}`}
           </Typography.Text>
           <Typography.TitleResponsive tag="h2" view="xsmall" font="system">
-            Заявка принята
+            Уведомления
           </Typography.TitleResponsive>
           <Typography.Text tag="p" color="secondary">
-            Проверяем данные по заявке {demoApplication.number}. Дополнительных
-            действий сейчас не требуется.
+            Список уведомлений пока недоступен. Актуальный статус можно
+            проверить в разделе заявок.
           </Typography.Text>
           <Link
             to={ROUTES.applications}
             className={styles.textLink}
             onClick={closePanel}
           >
-            Перейти к заявке
+            Перейти к заявкам
           </Link>
-          {notificationRead && (
-            <Typography.Text
-              view="secondary-medium"
-              color="secondary"
-              role="status"
-            >
-              Прочитано
-            </Typography.Text>
-          )}
         </div>
       </Panel>
     </>

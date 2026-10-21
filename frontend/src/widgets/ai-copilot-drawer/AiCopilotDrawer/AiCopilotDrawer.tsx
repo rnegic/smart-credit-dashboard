@@ -11,14 +11,14 @@ import { formatMoney } from '@/shared/lib'
 
 import styles from './AiCopilotDrawer.module.scss'
 
-/** Context displayed by the local demo assistant; amounts are in rubles. */
+/** Context displayed by the assistant; amounts are in rubles. */
 export interface AiCopilotDrawerProps {
   companyName: string
   application: {
     amount: number
     purpose: string
     statusLabel: string
-  }
+  } | null
 }
 
 interface DialogueTurn {
@@ -37,6 +37,7 @@ export function AiCopilotDrawer({
   application,
 }: AiCopilotDrawerProps) {
   const [open, setOpen] = useState(false)
+  const launcherRef = useRef<HTMLButtonElement>(null)
   const [question, setQuestion] = useState('')
   const [turns, setTurns] = useState<DialogueTurn[]>([])
   const nextTurnId = useRef(0)
@@ -65,8 +66,7 @@ export function AiCopilotDrawer({
       .trim()
 
     let answer =
-      'Для этого вопроса нет готовой подсказки. ' +
-      'Я могу только повторить показанные в кабинете параметры и статус заявки. Выберите один из вопросов выше.'
+      'Могу подсказать статус, сумму и цель заявки. Выберите один из готовых вопросов.'
 
     if (
       [
@@ -77,8 +77,9 @@ export function AiCopilotDrawer({
         'какой статус заявки',
       ].includes(normalizedQuestion)
     ) {
-      answer =
-        `В заявке ${companyName} показан статус «${application.statusLabel}». `
+      answer = application
+        ? `В заявке ${companyName} показан статус «${application.statusLabel}». `
+        : `У ${companyName} пока нет заявки. Начните с бизнес-задачи в форме финансирования.`
     } else if (
       [
         'какая сумма',
@@ -90,9 +91,10 @@ export function AiCopilotDrawer({
         'на что кредит',
       ].includes(normalizedQuestion)
     ) {
-      answer =
-        `В заявке ${companyName} указано ${formatMoney(application.amount)}. ` +
-        `Цель: ${application.purpose}. Это параметры с экрана, а не одобренный лимит или предложение банка.`
+      answer = application
+        ? `В заявке ${companyName} указано ${formatMoney(application.amount)}. ` +
+          `Цель: ${application.purpose}. Это параметры запроса, а не одобренный лимит.`
+        : 'Заявки пока нет. Сумму и цель можно указать в форме финансирования.'
     } else if (
       [
         'что умеет помощник',
@@ -103,7 +105,7 @@ export function AiCopilotDrawer({
       ].includes(normalizedQuestion)
     ) {
       answer =
-        'Я ИИ помощник, готовый вам помочь. Могу показать сумму, цель и статус заявки из этого кабинета. '
+        'Помогаю разобраться в данных кабинета: узнать статус, сумму и цель заявки. Не рассчитываю условия и не принимаю кредитные решения.'
     }
 
     const turn = { id: nextTurnId.current++, question: trimmedQuestion, answer }
@@ -119,6 +121,7 @@ export function AiCopilotDrawer({
   return (
     <div className={styles.launcherSpace}>
       <Button
+        ref={launcherRef}
         className={styles.launcher}
         labelClassName={styles.launcherLabel}
         type="button"
@@ -126,12 +129,12 @@ export function AiCopilotDrawer({
         size={56}
         leftAddons={<MagicWandMIcon aria-hidden="true" focusable="false" />}
         aria-haspopup="dialog"
-        aria-label="ИИ Помощник"
+        aria-label="Помощник"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen(true)}
       >
-        ИИ Помощник
+        Помощник
       </Button>
 
       <SidePanel
@@ -142,7 +145,16 @@ export function AiCopilotDrawer({
         scrollLock={true}
         disableAutoFocus={false}
         disableFocusLock={false}
-        disableRestoreFocus={false}
+        disableRestoreFocus={true}
+        onUnmount={() =>
+          requestAnimationFrame(() => {
+            if (
+              launcherRef.current?.isConnected &&
+              !document.querySelector('[role="dialog"]')
+            )
+              launcherRef.current.focus()
+          })
+        }
         disableEscapeKeyDown={false}
         wrapperProps={{ id: panelId, 'aria-labelledby': titleId }}
       >
@@ -162,7 +174,7 @@ export function AiCopilotDrawer({
                 view="xsmall"
                 font="system"
               >
-                ИИ Помощник
+                Помощник
               </Typography.TitleResponsive>
             </div>
           }
@@ -172,7 +184,7 @@ export function AiCopilotDrawer({
           <div className={styles.body}>
             <section
               className={styles.welcome}
-              aria-label="О демонстрационном помощнике"
+              aria-label="О помощнике"
             >
               <div className={styles.assistantIcon} aria-hidden="true">
                 <MagicWandMIcon aria-hidden="true" focusable="false" />
@@ -187,31 +199,43 @@ export function AiCopilotDrawer({
               >
                 Помогу сориентироваться в данных {companyName}
               </Typography.Text>
+              <Typography.Text
+                tag="p"
+                view="secondary-medium"
+                className={styles.muted}
+              >
+                Выберите готовый вопрос о статусе, сумме или цели заявки.
+              </Typography.Text>
             </section>
 
             <section
               className={styles.contextCard}
-              aria-label="Контекст демо-заявки"
+              aria-label="Данные заявки"
             >
               <Typography.Text
                 tag="span"
                 view="secondary-medium"
                 className={styles.muted}
               >
-                Ваша заявка
+                {application ? 'Ваша заявка' : 'Новая бизнес-задача'}
               </Typography.Text>
               <Typography.TitleResponsive tag="h3" view="small" font="system">
-                {formatMoney(application.amount)}
+                {application
+                  ? formatMoney(application.amount)
+                  : 'Заявки пока нет'}
               </Typography.TitleResponsive>
               <Typography.Text tag="p" view="primary-small">
-                {application.purpose}
+                {application?.purpose ??
+                  'Укажите сумму и цель в форме финансирования.'}
               </Typography.Text>
               <Typography.Text
                 tag="p"
                 view="secondary-medium"
                 className={styles.muted}
               >
-                Статус на экране: {application.statusLabel}
+                {application
+                  ? `Статус на экране: ${application.statusLabel}`
+                  : 'Начните с вашей бизнес-задачи'}
               </Typography.Text>
             </section>
 
@@ -237,7 +261,7 @@ export function AiCopilotDrawer({
             <div
               className={styles.dialogue}
               role="log"
-              aria-label="Диалог с демо-помощником"
+              aria-label="Диалог с помощником"
               aria-live="polite"
               aria-relevant="additions"
             >
@@ -261,7 +285,7 @@ export function AiCopilotDrawer({
                       view="secondary-medium"
                       weight="medium"
                     >
-                      ИИ Помощник
+                      Помощник
                     </Typography.Text>
                     <Typography.Text tag="p" view="primary-small">
                       {turn.answer}
