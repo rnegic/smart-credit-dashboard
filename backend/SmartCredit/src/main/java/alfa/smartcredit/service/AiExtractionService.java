@@ -5,9 +5,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -38,6 +40,9 @@ public class AiExtractionService {
             - existingMonthlyDebtPayment: ежемесячные платежи по текущим кредитам; если сказано, что кредитов нет, верни 0.
             - industry: отрасль одним словом (например "IT", "Торговля", "Производство").
             - taxSystem: одно из "USN", "OSNO", "PSN", "AUSN" (УСН, ОСНО, патент, АУСН).
+            Верни только JSON-объект без Markdown с ключами businessTask, amount, termMonths,
+            purpose, monthlyRevenue, existingMonthlyDebtPayment, industry, taxSystem.
+            Все ключи обязательны, неизвестные значения должны быть null.
             """;
 
     private static final Set<String> TAX_SYSTEMS = Set.of("USN", "OSNO", "PSN", "AUSN");
@@ -46,14 +51,19 @@ public class AiExtractionService {
     private final ObjectMapper mapper;
     private final String apiKey;
     private final String model;
+    private final String responseFormat;
 
     public AiExtractionService(@Qualifier("openAiRestClient") RestClient client, ObjectMapper mapper,
                                @Value("${app.openai.api-key}") String apiKey,
-                               @Value("${app.openai.model}") String model) {
+                               @Value("${app.openai.model}") String model,
+                               @Value("${app.openai.response-format:json_object}") String responseFormat) {
         this.client = client;
         this.mapper = mapper;
         this.apiKey = apiKey;
         this.model = model;
+        if (!Set.of("json_schema", "json_object", "text").contains(responseFormat))
+            throw new IllegalArgumentException("OPENAI_RESPONSE_FORMAT must be json_schema, json_object or text");
+        this.responseFormat = responseFormat;
     }
 
     public Extracted extract(String text) {
@@ -76,28 +86,41 @@ public class AiExtractionService {
                 "required", List.copyOf(props.keySet()),
                 "additionalProperties", false);
 
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "messages", List.of(
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", List.of(
                         Map.of("role", "system", "content", SYSTEM_PROMPT),
-                        Map.of("role", "user", "content", text)),
-                "response_format", Map.of("type", "json_schema",
-                        "json_schema", Map.of("name", "application_extraction", "strict", true, "schema", schema)));
+                        Map.of("role", "user", "content", text)));
+        if (responseFormat.equals("json_schema")) {
+            body.put("response_format", Map.of("type", "json_schema",
+                    "json_schema", Map.of("name", "application_extraction", "strict", true, "schema", schema)));
+        } else if (responseFormat.equals("json_object")) {
+            body.put("response_format", Map.of("type", "json_object"));
+        }
 
         JsonNode root;
         try {
-            root = client.post().uri("/v1/chat/completions")
+            root = client.post().uri("/chat/completions")
                     .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
                     .body(body).retrieve().body(JsonNode.class);
+        } catch (RestClientResponseException e) {
+            // Never log provider bodies: they may echo credentials or user input.
+            log.warn("ИИ-провайдер отклонил запрос: HTTP {}, model={}", e.getStatusCode().value(), model);
+            throw unavailable();
         } catch (RestClientException e) {
-            log.warn("OpenAI недоступен: {}", e.getMessage());
+            log.warn("Ошибка соединения с ИИ-провайдером: {}, model={}", e.getClass().getSimpleName(), model);
             throw unavailable();
         }
 
-        String content = root.path("choices").path(0).path("message").path("content").asText("");
         JsonNode n;
         try {
-            n = mapper.readTree(content);
+            if (root == null || !root.isObject()) throw new IllegalArgumentException("Missing response");
+            JsonNode content = root.path("choices").path(0).path("message").path("content");
+            if (!content.isTextual()) throw new IllegalArgumentException("Missing content");
+            n = mapper.readTree(content.asText());
+            if (n == null || !n.isObject()) throw new IllegalArgumentException("Expected JSON object");
         } catch (Exception e) {
             throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_BAD_RESPONSE",
                     "Не удалось разобрать ответ ИИ, заполните форму вручную");
@@ -122,7 +145,7 @@ public class AiExtractionService {
     }
     private Integer integer(JsonNode n, String f, int min, int max) {
         JsonNode v = n.path(f);
-        return v.isNumber() && v.asInt() >= min && v.asInt() <= max ? v.asInt() : null;
+        return v.isIntegralNumber() && v.canConvertToInt() && v.asInt() >= min && v.asInt() <= max ? v.asInt() : null;
     }
     private String str(JsonNode n, String f, int max) {
         JsonNode v = n.path(f);

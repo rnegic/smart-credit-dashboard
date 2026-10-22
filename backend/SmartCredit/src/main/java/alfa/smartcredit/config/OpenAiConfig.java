@@ -1,13 +1,14 @@
 package alfa.smartcredit.config;
 
+import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -16,24 +17,27 @@ import java.time.Duration;
 public class OpenAiConfig {
 
     @Bean("openAiRestClient")
-    RestClient openAiRestClient(@Value("${app.openai.base-url}") String baseUrl) {
-        // 1. Настраиваем таймауты для Apache HttpClient 5
+    RestClient openAiRestClient(@Value("${app.openai.base-url}") String baseUrl,
+                               @Value("${app.openai.connect-timeout}") Duration connectTimeout,
+                               @Value("${app.openai.read-timeout}") Duration readTimeout) {
         RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectTimeout(Timeout.ofSeconds(5))
-                .setResponseTimeout(Timeout.ofSeconds(40))
+                .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectTimeout.toMillis()))
+                .setResponseTimeout(Timeout.ofMilliseconds(readTimeout.toMillis()))
                 .build();
 
-        // 2. Создаём сам HTTP-клиент
         var httpClient = HttpClients.custom()
+                .setConnectionManager(PoolingHttpClientConnectionManagerBuilder.create()
+                        .setDefaultConnectionConfig(ConnectionConfig.custom()
+                                .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout.toMillis()))
+                                .build())
+                        .build())
                 .setDefaultRequestConfig(requestConfig)
                 .build();
 
-        // 3. Оборачиваем его в фабрику Spring
         var requestFactory = new HttpComponentsClientHttpRequestFactory(httpClient);
 
-        // 4. Собираем RestClient
         return RestClient.builder()
-                .baseUrl(baseUrl)
+                .baseUrl(baseUrl.strip().replaceAll("/+$", ""))
                 .requestFactory(requestFactory)
                 .build();
     }
