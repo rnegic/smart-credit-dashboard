@@ -36,11 +36,32 @@
 }
 .stepper {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--gap-16);
   padding: var(--gap-0);
   margin: var(--gap-0);
   list-style: none;
+}
+.ipForm {
+  gap: var(--gap-16);
+  padding-block: var(--gap-16);
+}
+.ipForm .stepper {
+  font-size: var(--gap-14);
+}
+.reviewTitle {
+  margin: var(--gap-0);
+  font-family: var(--font-family-system);
+  font-size: var(--gap-20);
+}
+.reviewParameters {
+  display: grid;
+  gap: var(--gap-16);
+}
+.reviewParameters > div {
+  display: grid;
+  gap: var(--gap-8);
 }
 .stepper li {
   display: flex;

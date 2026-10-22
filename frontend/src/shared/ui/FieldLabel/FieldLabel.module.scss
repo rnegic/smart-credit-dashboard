@@ -1,0 +1,38 @@
+.label {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-4);
+  font-size: var(--gap-14);
+  line-height: 1.4;
+  color: var(--color-light-neutral-700-press);
+  min-block-size: var(--gap-24);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--gap-24);
+  block-size: var(--gap-24);
+  padding: var(--gap-0);
+  border: 0;
+  border-radius: var(--border-radius-4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.button:hover {
+  color: var(--color-light-text-primary);
+}
+.button:focus-visible {
+  outline: 2px solid var(--color-light-text-primary);
+  outline-offset: var(--gap-2);
+}
+
+.hint {
+  max-inline-size: min(20rem, calc(100vw - var(--gap-32)));
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
