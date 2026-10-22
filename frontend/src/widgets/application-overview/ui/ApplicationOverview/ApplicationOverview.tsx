@@ -115,82 +115,85 @@ export function ApplicationOverview({
 
   if (showLoan && loan) {
     return (
-      <section className={styles.card} aria-labelledby={headingId}>
-        <div className={styles.topline}>
-          <Typography.Text view="primary-small" weight="medium">
-            Действующий кредит
-          </Typography.Text>
-          <Typography.Text view="secondary-large" color="secondary">
-            № {loan.id}
-          </Typography.Text>
-        </div>
-        <div className={styles.heading}>
-          <Typography.TitleResponsive
-            id={headingId}
-            tag="h2"
-            view="large"
-            font="system"
-            weight="bold"
-          >
-            Остаток долга{' '}
-            <span className={styles.amount}>
-              {formatMoney(loan.remainingBalance)}
-            </span>
-          </Typography.TitleResponsive>
-          <Typography.Text tag="p" color="secondary">
-            Ставка {loan.ratePercent}% годовых · Срок: {loan.termMonths} мес.
-          </Typography.Text>
-        </div>
-        <div className={styles.progress}>
-          <dl className={styles.parameters}>
-            <div>
-              <dt>Сумма кредита</dt>
-              <dd>{formatMoney(loan.principal)}</dd>
-            </div>
-            <div>
-              <dt>Ежемесячный платёж</dt>
-              <dd>{formatMoney(loan.monthlyPayment)}</dd>
-            </div>
-            {payment && (
-              <>
-                <div>
-                  <dt>Ближайший платёж</dt>
-                  <dd>{formatMoney(payment.amount)}</dd>
-                </div>
-                <div>
-                  <dt>Дата платежа</dt>
-                  <dd>{formatDate(payment.dueDate)}</dd>
-                </div>
-              </>
-            )}
-          </dl>
-          {!payment && (
-            <Typography.Text tag="p" color="secondary">
-              Ближайший платёж не указан.
+      <>
+        <section className={styles.card} aria-labelledby={headingId}>
+          <div className={styles.topline}>
+            <Typography.Text view="primary-small" weight="medium">
+              Действующий кредит
             </Typography.Text>
-          )}
-        </div>
-        <div className={styles.bottomline}>
-          <Typography.Text view="primary-small" color="secondary">
-            {paymentIsUrgent
-              ? payment && new Date(`${payment.dueDate}T00:00:00`) < today
-                ? 'Дата платежа прошла. Проверьте исполнение обязательства.'
-                : 'Платёж по кредиту в ближайшие 7 дней. Проверьте готовность к оплате.'
-              : 'Сведения о действующем кредите.'}
-          </Typography.Text>
-          <Button
-            view="primary"
-            size={48}
-            className={styles.detailsButton}
-            rightAddons={<ArrowRightMIcon aria-hidden="true" />}
-            onClick={() => {
-              void navigate(ROUTES.credits)
-            }}
-          >
-            К кредитам
-          </Button>
-        </div>
-      </section>
+            <Typography.Text view="secondary-large" color="secondary">
+              № {loan.id}
+            </Typography.Text>
+          </div>
+          <div className={styles.heading}>
+            <Typography.TitleResponsive
+              id={headingId}
+              tag="h2"
+              view="large"
+              font="system"
+              weight="bold"
+            >
+              Остаток долга{' '}
+              <span className={styles.amount}>
+                {formatMoney(loan.remainingBalance)}
+              </span>
+            </Typography.TitleResponsive>
+            <Typography.Text tag="p" color="secondary">
+              Ставка {loan.ratePercent}% годовых · Срок: {loan.termMonths} мес.
+            </Typography.Text>
+          </div>
+          <div className={styles.progress}>
+            <dl className={styles.parameters}>
+              <div>
+                <dt>Сумма кредита</dt>
+                <dd>{formatMoney(loan.principal)}</dd>
+              </div>
+              <div>
+                <dt>Ежемесячный платёж</dt>
+                <dd>{formatMoney(loan.monthlyPayment)}</dd>
+              </div>
+              {payment && (
+                <>
+                  <div>
+                    <dt>Ближайший платёж</dt>
+                    <dd>{formatMoney(payment.amount)}</dd>
+                  </div>
+                  <div>
+                    <dt>Дата платежа</dt>
+                    <dd>{formatDate(payment.dueDate)}</dd>
+                  </div>
+                </>
+              )}
+            </dl>
+            {!payment && (
+              <Typography.Text tag="p" color="secondary">
+                Ближайший платёж не указан.
+              </Typography.Text>
+            )}
+          </div>
+          <div className={styles.bottomline}>
+            <Typography.Text view="primary-small" color="secondary">
+              {paymentIsUrgent
+                ? payment && new Date(`${payment.dueDate}T00:00:00`) < today
+                  ? 'Дата платежа прошла. Проверьте исполнение обязательства.'
+                  : 'Платёж по кредиту в ближайшие 7 дней. Проверьте готовность к оплате.'
+                : 'Сведения о действующем кредите.'}
+            </Typography.Text>
+            <Button
+              view="primary"
+              size={48}
+              className={styles.detailsButton}
+              rightAddons={<ArrowRightMIcon aria-hidden="true" />}
+              onClick={() => {
+                void navigate(ROUTES.credits)
+              }}
+            >
+              К кредитам
+            </Button>
+          </div>
+        </section>
+        <ApplicationForm resumeOnly />
+      </>
     )
   }
 
@@ -377,10 +380,7 @@ export function ApplicationOverview({
             )}
           </div>
         )}
-        <div
-          className={styles.progress}
-          aria-label="Этапы рассмотрения заявки"
-        >
+        <div className={styles.progress} aria-label="Этапы рассмотрения заявки">
           {progressDescription}
           <div className={styles.desktopSteps} inert aria-hidden="true">
             <Steps
@@ -440,6 +440,7 @@ export function ApplicationOverview({
           </Button>
         </div>
       </section>
+      {!providedApplication && <ApplicationForm resumeOnly />}
 
       <Panel
         open={detailsOpen}

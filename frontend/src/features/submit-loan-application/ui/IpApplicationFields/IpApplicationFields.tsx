@@ -13,7 +13,9 @@ export interface IpApplicationData {
   taxSystem: string
   monthlyRevenue: string
   monthlyDebtPayment: string
-  consent: boolean
+  personalData: boolean
+  bkiRequest: boolean
+  fnsRequest: boolean
   fullName: string
   ogrnip: string
   registrationDate: string
@@ -21,6 +23,7 @@ export interface IpApplicationData {
   registrationAddress: string
   phone: string
   email: string
+  industry: string
 }
 
 export interface IpApplicationFieldsProps {
@@ -30,10 +33,27 @@ export interface IpApplicationFieldsProps {
   profileMatches?: boolean
   confirmed?: boolean
   onConfirm?: () => void
+  aiFilled?: ReadonlySet<string>
+  missingFields?: ReadonlySet<string>
+  errors?: Readonly<Record<string, string>>
 }
 
+type TextFieldName =
+  | 'companyName'
+  | 'inn'
+  | 'legalForm'
+  | 'monthlyRevenue'
+  | 'monthlyDebtPayment'
+  | 'fullName'
+  | 'ogrnip'
+  | 'registrationDate'
+  | 'okved'
+  | 'registrationAddress'
+  | 'phone'
+  | 'email'
+
 type TextField = {
-  name: Exclude<keyof IpApplicationData, 'consent' | 'taxSystem'>
+  name: TextFieldName
   label: string
   hint?: string
   placeholder?: string
@@ -125,9 +145,17 @@ const registrationFields: TextField[] = [
 const taxOptions = [
   { key: 'OSNO', content: 'ОСНО' },
   { key: 'USN', content: 'УСН' },
-  { key: 'PATENT', content: 'Патент' },
+  { key: 'PSN', content: 'Патент' },
+  { key: 'AUSN', content: 'АУСН' },
   { key: 'NPD', content: 'НПД' },
 ]
+
+const aiPaths: Partial<Record<TextFieldName | 'taxSystem', string>> = {
+  taxSystem: 'step2_businessData.applicant.taxSystem',
+  monthlyRevenue: 'step2_businessData.financials.monthlyRevenue',
+  monthlyDebtPayment:
+    'step2_businessData.financials.existingMonthlyDebtPayment',
+}
 
 export function IpApplicationFields({
   section,
@@ -136,6 +164,9 @@ export function IpApplicationFields({
   profileMatches,
   confirmed,
   onConfirm,
+  aiFilled = new Set(),
+  missingFields = new Set(),
+  errors = {},
 }: IpApplicationFieldsProps) {
   const id = useId()
   const fields = section === 'business' ? businessFields : registrationFields
@@ -143,6 +174,10 @@ export function IpApplicationFields({
   function editPrefill() {
     onChange({})
     document.getElementById(`${id}-fullName`)?.focus()
+  }
+  function hasAiPath(paths: ReadonlySet<string>, fieldName: TextFieldName) {
+    const path = aiPaths[fieldName]
+    return path ? paths.has(path) : false
   }
   return (
     <div className={styles.body}>
@@ -157,8 +192,8 @@ export function IpApplicationFields({
           <div>
             <strong>
               <p>
-                <span style={{ color: 'green' }}>✓ </span>
-                <span style={{ color: confirmed ? 'green' : 'inherit' }}>
+                <span className={styles.check}>✓ </span>
+                <span className={confirmed ? styles.confirmed : undefined}>
                   {confirmed ? 'Данные подтверждены' : 'Нашли вашу компанию'}
                 </span>
               </p>
@@ -221,10 +256,20 @@ export function IpApplicationFields({
                 }
                 value={value[field.name]}
                 placeholder={field.placeholder}
+                error={
+                  errors[field.name] ??
+                  (hasAiPath(missingFields, field.name) &&
+                  !value[field.name].trim()
+                    ? 'Заполните поле'
+                    : undefined)
+                }
                 onChange={(_, { value: next }) =>
                   onChange({ [field.name]: next })
                 }
               />
+              {hasAiPath(aiFilled, field.name) && (
+                <p className={styles.aiNote}>Заполнено ИИ, проверьте</p>
+              )}
             </div>
             {section === 'business' && field.name === 'legalForm' && (
               <div>
@@ -242,10 +287,14 @@ export function IpApplicationFields({
                   selected={value.taxSystem || null}
                   fieldProps={{ 'aria-label': 'Система налогообложения' }}
                   placeholder="Выберите систему налогообложения"
+                  error={errors.taxSystem}
                   onChange={({ selected }) =>
                     onChange({ taxSystem: selected?.key ?? '' })
                   }
                 />
+                {aiFilled.has(aiPaths.taxSystem ?? '') && (
+                  <p className={styles.aiNote}>Заполнено ИИ, проверьте</p>
+                )}
               </div>
             )}
           </Fragment>
@@ -254,17 +303,33 @@ export function IpApplicationFields({
       {section === 'business' && (
         <div className={styles.consents}>
           <FieldLabel
-            htmlFor={`${id}-consent`}
             text="Согласия"
             hint="Обработка персональных данных, запрос кредитной истории и сведений ФНС для рассмотрения заявки"
           />
           <Checkbox
-            id={`${id}-consent`}
-            name="consent"
+            id={`${id}-personalData`}
+            name="personalData"
             required
-            checked={value.consent}
-            onChange={(_, { checked }) => onChange({ consent: checked })}
-            label="Согласен на обработку данных и получение сведений"
+            checked={value.personalData}
+            error={errors.personalData}
+            onChange={(_, { checked }) => onChange({ personalData: checked })}
+            label="Согласен на обработку персональных данных"
+          />
+          <Checkbox
+            name="bkiRequest"
+            required
+            checked={value.bkiRequest}
+            error={errors.bkiRequest}
+            onChange={(_, { checked }) => onChange({ bkiRequest: checked })}
+            label="Разрешаю запрос кредитной истории"
+          />
+          <Checkbox
+            name="fnsRequest"
+            required
+            checked={value.fnsRequest}
+            error={errors.fnsRequest}
+            onChange={(_, { checked }) => onChange({ fnsRequest: checked })}
+            label="Разрешаю получение сведений ФНС"
           />
           <details>
             <summary>Подробнее о согласиях</summary>

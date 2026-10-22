@@ -34,6 +34,14 @@
   gap: var(--gap-8);
   flex-wrap: wrap;
 }
+.check,
+.confirmed {
+  color: var(--color-light-status-positive);
+}
+.aiNote {
+  color: var(--color-light-text-info);
+  font-size: var(--gap-12);
+}
 .consents {
   display: grid;
   gap: var(--gap-8);

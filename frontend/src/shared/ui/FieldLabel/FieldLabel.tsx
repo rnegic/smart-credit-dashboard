@@ -4,7 +4,7 @@ import { InformationCircleLineSIcon } from '@alfalab/icons/glyph/dist/Informatio
 import styles from './FieldLabel.module.scss'
 
 export interface FieldLabelProps {
-  htmlFor: string
+  htmlFor?: string
   text: string
   hint?: string
 }
@@ -14,7 +14,7 @@ export function FieldLabel({ htmlFor, text, hint }: FieldLabelProps) {
   const tooltipId = useId()
   return (
     <div className={styles.label}>
-      <label htmlFor={htmlFor}>{text}</label>
+      {htmlFor ? <label htmlFor={htmlFor}>{text}</label> : <span>{text}</span>}
       {hint && (
         <TooltipDesktop
           open={open}

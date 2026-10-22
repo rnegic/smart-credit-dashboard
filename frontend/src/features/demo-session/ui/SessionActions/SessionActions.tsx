@@ -1,8 +1,4 @@
-import {
-  useIsMutating,
-  useMutation,
-  useQueryClient,
-} from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@alfalab/core-components/button'
 import { LogOutMIcon } from '@alfalab/icons/glyph/dist/LogOutMIcon'
 import { changeSession } from '@/entities/session'
@@ -16,7 +12,6 @@ export interface SessionActionsProps {
 export function SessionActions({ compact = false }: SessionActionsProps) {
   const cache = useQueryClient()
   const transition = useSessionTransition()
-  const mutations = useIsMutating()
   const logout = useMutation({
     networkMode: 'always',
     mutationFn: () =>
@@ -34,7 +29,7 @@ export function SessionActions({ compact = false }: SessionActionsProps) {
         aria-label={compact ? 'Выйти' : undefined}
         title={compact ? 'Выйти' : undefined}
         loading={logout.isPending}
-        disabled={transition.switching || mutations > 0}
+        disabled={transition.switching || logout.isPending}
         onClick={() => logout.mutate()}
       >
         {compact ? (
