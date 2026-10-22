@@ -5,6 +5,9 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -33,4 +36,9 @@ public class CreditApplication {
     private String aiComment;
     @Column(name = "officer_comment")
     private String officerComment;
+    @Column(name = "business_task") private String businessTask;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "form_data")
+    private JsonNode formData;
 }

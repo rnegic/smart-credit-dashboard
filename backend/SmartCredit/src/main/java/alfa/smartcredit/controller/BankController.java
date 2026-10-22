@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import tools.jackson.databind.JsonNode;
 
 import java.util.List;
 
@@ -35,5 +36,10 @@ public class BankController {
                                   HttpServletRequest request) {
         sessionContext.requireOfficer(request);
         return applicationService.decide(id, body);
+    }
+    @GetMapping("/applications/{id}/form")
+    public JsonNode form(@PathVariable Long id, HttpServletRequest request) {
+        sessionContext.requireOfficer(request);
+        return applicationService.getFormForBank(id);
     }
 }

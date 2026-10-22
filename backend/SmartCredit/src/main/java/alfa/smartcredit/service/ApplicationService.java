@@ -1,7 +1,7 @@
 package alfa.smartcredit.service;
 
+import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
-import alfa.smartcredit.dto.CreateApplicationRequest;
 import alfa.smartcredit.dto.DecisionRequest;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
@@ -16,6 +16,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -33,6 +36,7 @@ public class ApplicationService {
     private final CompanyRepository companyRepository;
     private final OfferRepository offerRepository;
     private final ScoringService scoringService;
+    private final ObjectMapper mapper;
 
     @Transactional
     public void setLegalForm(Long companyId, String legalForm) {
@@ -41,23 +45,47 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationView create(Long companyId, CreateApplicationRequest req) {
+    public ApplicationView create(Long companyId, ApplicationFormDto form) {
         Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
         if (company.getLegalForm() == null)
             throw new ApiException(HttpStatus.CONFLICT, "LEGAL_FORM_REQUIRED", "Сначала выберите ИП или ООО");
 
+        var s1 = form.step1();
+        var fin = form.step2().financials();
+
         CreditApplication a = new CreditApplication();
         a.setCompanyId(companyId);
-        a.setAmount(req.amount());
-        a.setTermMonths(req.termMonths());
-        a.setPurpose(req.purpose());
+        a.setAmount(s1.amount());
+        a.setTermMonths(s1.termMonths());
+        a.setPurpose(s1.purpose());
+        a.setBusinessTask(s1.businessTask());
         a.setStatus(ApplicationStatus.IN_REVIEW);
 
-        ScoringService.Result r = scoringService.score(company, req.amount(), req.termMonths());
+        ScoringService.Result r = scoringService.score(company, form);
         a.setRiskScore(r.score());
         a.setRiskClass(r.riskClass());
         a.setAiComment(r.comment());
-        return toView(applicationRepository.save(a), company);
+        a = applicationRepository.save(a);
+
+        // сохраняем форму целиком, но личность заявителя берём у сервера, не у клиента
+        ObjectNode tree = mapper.valueToTree(form);
+        ObjectNode applicant = (ObjectNode) tree.at("/step2_businessData/applicant");
+        applicant.put("type", company.getLegalForm());
+        applicant.put("inn", company.getInn());
+        applicant.put("companyName", company.getName());
+        applicant.put("mainOkved", company.getOkved());
+        tree.put("applicationId", "app_2026_" + String.format("%04d", a.getId()));
+        tree.put("status", "SUBMITTED");
+        a.setFormData(tree);
+
+        return toView(a, company);
+    }
+
+    @Transactional(readOnly = true)
+    public JsonNode getFormForBank(Long id) {
+        JsonNode f = find(id).getFormData();
+        if (f == null) throw ApiException.notFound("Для этой заявки нет анкеты (демо-данные)");
+        return f;
     }
 
     @Transactional(readOnly = true)
@@ -155,7 +183,7 @@ public class ApplicationService {
                         o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil(), o.getStatus().name()))
                 .orElse(null);
         return new ApplicationView(a.getId(), c.getName(), c.getInn(), c.getLegalForm(),
-                a.getAmount(), a.getTermMonths(), a.getPurpose(), a.getStatus().name(),
+                a.getAmount(), a.getTermMonths(), a.getPurpose(),a.getBusinessTask(), a.getStatus().name(),
                 a.getRiskScore(), a.getRiskClass(), a.getAiComment(), a.getOfficerComment(),
                 a.getCreatedAt(), offer);
     }

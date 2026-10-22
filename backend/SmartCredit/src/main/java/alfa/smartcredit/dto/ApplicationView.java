@@ -6,7 +6,7 @@ import java.time.LocalDate;
 
 public record ApplicationView(
         Long id, String companyName, String inn, String legalForm,
-        BigDecimal amount, Integer termMonths, String purpose, String status,
+        BigDecimal amount, Integer termMonths, String purpose,String businessTask, String status,
         Integer riskScore, String riskClass, String aiComment, String officerComment,
         Instant createdAt, OfferView offer) {
     public record OfferView(Long id, BigDecimal amount, Integer termMonths,
