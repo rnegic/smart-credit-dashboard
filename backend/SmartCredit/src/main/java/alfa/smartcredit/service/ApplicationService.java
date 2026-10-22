@@ -9,6 +9,7 @@ import alfa.smartcredit.model.CreditApplication;
 import alfa.smartcredit.model.Offer;
 import alfa.smartcredit.model.enums.ApplicationStatus;
 import alfa.smartcredit.model.enums.OfferStatus;
+import alfa.smartcredit.repository.ApplicationDraftRepository;
 import alfa.smartcredit.repository.CompanyRepository;
 import alfa.smartcredit.repository.CreditApplicationRepository;
 import alfa.smartcredit.repository.OfferRepository;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 public class ApplicationService {
 
     private final CreditApplicationRepository applicationRepository;
+    private final ApplicationDraftRepository draftRepository;
     private final CompanyRepository companyRepository;
     private final OfferRepository offerRepository;
     private final ScoringService scoringService;
@@ -69,14 +71,12 @@ public class ApplicationService {
 
         // сохраняем форму целиком, но личность заявителя берём у сервера, не у клиента
         ObjectNode tree = mapper.valueToTree(form);
-        ObjectNode applicant = (ObjectNode) tree.at("/step2_businessData/applicant");
-        applicant.put("type", company.getLegalForm());
-        applicant.put("inn", company.getInn());
-        applicant.put("companyName", company.getName());
-        applicant.put("mainOkved", company.getOkved());
+        ApplicationFormService.applyCompanyIdentity(tree, company);
         tree.put("applicationId", "app_2026_" + String.format("%04d", a.getId()));
         tree.put("status", "SUBMITTED");
         a.setFormData(tree);
+        applicationRepository.saveAndFlush(a);
+        draftRepository.deleteByCompanyId(companyId);
 
         return toView(a, company);
     }

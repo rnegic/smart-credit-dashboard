@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -53,6 +54,14 @@ public class ApplicationFormService {
         if (x.taxSystem() != null) filled.add(s2 + "applicant.taxSystem");
 
         return new PrefillResponse(form, filled, missing);
+    }
+
+    public static void applyCompanyIdentity(ObjectNode form, Company company) {
+        ObjectNode applicant = (ObjectNode) form.at("/step2_businessData/applicant");
+        applicant.put("type", company.getLegalForm());
+        applicant.put("inn", company.getInn());
+        applicant.put("companyName", company.getName());
+        applicant.put("mainOkved", company.getOkved());
     }
 
     private void track(boolean ok, String path, List<String> filled, List<String> missing) {
