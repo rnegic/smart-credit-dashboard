@@ -1,0 +1,48 @@
+services:
+  # 1. База данных Postgres
+  postgres:
+    image: postgres:16
+    container_name: smart-credit-db
+    environment:
+      POSTGRES_DB: credit_cabinet
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d credit_cabinet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Бекенд (Spring Boot)
+  backend:
+    build:
+      context: ./backend/SmartCredit
+      dockerfile: Dockerfile    
+    container_name: smart-credit-backend
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/credit_cabinet
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # 3. Фронтенд (Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: smart-credit-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
