@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+} from 'react'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -233,14 +240,18 @@ export function ApplicationForm({ headingTag = 'h1' }: ApplicationFormProps) {
             view="primary"
             rightAddons={<ArrowRightMIcon aria-hidden="true" />}
             disabled={dashboard.isPending || Boolean(dashboard.error)}
-            onClick={(event) => start(false, event.currentTarget)}
+            onClick={(event: MouseEvent<HTMLButtonElement>) =>
+              start(false, event.currentTarget)
+            }
           >
             Продолжить
           </Button>
           <Button
             view="secondary"
             disabled={dashboard.isPending || Boolean(dashboard.error)}
-            onClick={(event) => start(true, event.currentTarget)}
+            onClick={(event: MouseEvent<HTMLButtonElement>) =>
+              start(true, event.currentTarget)
+            }
           >
             Выбрать самостоятельно
           </Button>

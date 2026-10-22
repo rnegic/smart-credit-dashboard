@@ -1,4 +1,4 @@
-import { Fragment, useId, type HTMLInputTypeAttribute } from 'react'
+import { Fragment, useId, type ComponentProps } from 'react'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Checkbox } from '@alfalab/core-components/checkbox'
@@ -37,7 +37,7 @@ type TextField = {
   label: string
   hint?: string
   placeholder?: string
-  type?: HTMLInputTypeAttribute
+  type?: ComponentProps<typeof Input>['type']
   inputMode?: 'numeric' | 'decimal'
   wide?: boolean
   required?: boolean
@@ -91,7 +91,8 @@ const registrationFields: TextField[] = [
     name: 'registrationDate',
     label: 'Дата регистрации ИП',
     hint: 'Дата государственной регистрации предпринимателя',
-    type: 'date',
+    inputMode: 'numeric',
+    placeholder: 'ДД.ММ.ГГГГ',
   },
   {
     name: 'okved',
