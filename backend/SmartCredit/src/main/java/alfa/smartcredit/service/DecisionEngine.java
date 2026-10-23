@@ -15,12 +15,6 @@ public class DecisionEngine {
     private static final DecisionStatus INADEQUATE_REQUEST_STATUS = DecisionStatus.DECLINED;
 
     /**
-     * В таблице решений (шаги 8-9) для APPROVED в колонке ставки написано «rate», а в шаге 6 для A/B указано
-     * rate + премия + отраслевая надбавка. Считаем по шагу 6 (false). true: брать для APPROVED только базовую rate.
-     */
-    private static final boolean APPROVED_USES_BASE_RATE = false;
-
-    /**
      * Это РЕКОМЕНДАЦИЯ для сотрудника банка: итоговое решение выносит человек.
      * @param finalRate итоговая ставка; null для INFO_REQUIRED / DECLINED / MANUAL_REVIEW
      * @param amount    сумма к выдаче: amount для APPROVED, min(amount, calculatedLimit) для ALTERNATIVE_OFFER; иначе null
@@ -42,6 +36,8 @@ public class DecisionEngine {
 
         // ---- УРОВЕНЬ 2 ----
         RiskClass cls = s.riskClass();
+        BigDecimal industryPremium = BigDecimal.valueOf(s.industryRatePremium());
+        BigDecimal approvedRate = s.rate().add(industryPremium).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalRate = finalRate(s.rate(), cls, s.industryRatePremium());
 
         // ---- УРОВЕНЬ 3 ----
@@ -50,7 +46,7 @@ public class DecisionEngine {
         String base = "Скоринг " + s.internalScore() + " (класс " + cls + "), DTI " + dti + "%. ";
 
         if ((cls == RiskClass.A || cls == RiskClass.B) && dti <= 50 && withinLimit)
-            return new Decision(DecisionStatus.APPROVED, APPROVED_USES_BASE_RATE ? s.rate() : finalRate, amount, base + "Заявка одобрена на запрошенных условиях.");
+            return new Decision(DecisionStatus.APPROVED, approvedRate, amount, base + "Заявка одобрена на запрошенных условиях.");
 
         if (cls == RiskClass.A || cls == RiskClass.B)
             return new Decision(DecisionStatus.ALTERNATIVE_OFFER, finalRate, amount.min(s.calculatedLimit()),
@@ -63,7 +59,7 @@ public class DecisionEngine {
         return stop(DecisionStatus.MANUAL_REVIEW, base + "Нужна ручная проверка менеджером банка.");
     }
 
-    /** finalRate = rate + премия за класс риска + отраслевая надбавка. Используется и при ручном APPROVE. */
+    /** finalRate = rate + премия за класс риска + отраслевая надбавка (для ALTERNATIVE_OFFER и ручного решения). */
     public BigDecimal finalRate(BigDecimal rate, RiskClass cls, double industryRatePremium) {
         return rate.add(ProductRules.riskPremium(cls))
                 .add(BigDecimal.valueOf(industryRatePremium))

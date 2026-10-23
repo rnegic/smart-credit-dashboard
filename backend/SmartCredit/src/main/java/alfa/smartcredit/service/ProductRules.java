@@ -37,10 +37,10 @@ public final class ProductRules {
         };
     }
 
-    /** Премия за класс риска: A = +0.00, B = +0.25, C = +0.50 (D в авто-решении не доходит до этого шага). */
+    /** Премия за класс риска для ALTERNATIVE_OFFER: A = +0.10, B = +0.25, C = +0.50. Для APPROVED A/B не применяется. */
     public static BigDecimal riskPremium(RiskClass cls) {
         return switch (cls) {
-            case A -> new BigDecimal("0.00");
+            case A -> new BigDecimal("0.10");
             case B -> new BigDecimal("0.25");
             case C, D -> new BigDecimal("0.50");
         };
