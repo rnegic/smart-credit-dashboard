@@ -57,8 +57,8 @@ export function AcceptOffer({ offer, application }: AcceptOfferProps) {
         <div className={styles.body} role="status">
           <p>
             Вы выбрали предложение банка. Подтвердите подписание условий:{' '}
-            {formatMoney(offer.amount)} на {offer.termMonths} мес. по ставке{' '}
-            {offer.ratePercent}% годовых. Ежемесячный платеж:{' '}
+            {formatMoney(offer.amount)} на {offer.termDays} дней по ставке{' '}
+            {offer.finalRate}% годовых. Ежемесячный платеж:{' '}
             {formatMoney(offer.monthlyPayment)}.
           </p>
           <p>После подписания ожидайте подтверждения выдачи.</p>

@@ -12,7 +12,7 @@ export interface IpApplicationData {
   legalForm: string
   taxSystem: string
   monthlyRevenue: string
-  monthlyDebtPayment: string
+  existingDebt: string
   personalData: boolean
   bkiRequest: boolean
   fnsRequest: boolean
@@ -43,7 +43,7 @@ type TextFieldName =
   | 'inn'
   | 'legalForm'
   | 'monthlyRevenue'
-  | 'monthlyDebtPayment'
+  | 'existingDebt'
   | 'fullName'
   | 'ogrnip'
   | 'registrationDate'
@@ -87,9 +87,10 @@ const businessFields: TextField[] = [
     required: true,
   },
   {
-    name: 'monthlyDebtPayment',
-    label: 'Платеж по действующим кредитам, ₽',
-    hint: 'Если кредитов нет — оставьте 0',
+    name: 'existingDebt',
+    label: 'Задолженность по действующим кредитам, ₽',
+    hint:
+      'Общий остаток долга, не ежемесячный платеж. Если кредитов нет, оставьте 0.',
     inputMode: 'decimal',
   },
 ]
@@ -153,8 +154,7 @@ const taxOptions = [
 const aiPaths: Partial<Record<TextFieldName | 'taxSystem', string>> = {
   taxSystem: 'step2_businessData.applicant.taxSystem',
   monthlyRevenue: 'step2_businessData.financials.monthlyRevenue',
-  monthlyDebtPayment:
-    'step2_businessData.financials.existingMonthlyDebtPayment',
+  existingDebt: 'step2_businessData.financials.existingDebt',
 }
 
 export function IpApplicationFields({

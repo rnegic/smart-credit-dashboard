@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@alfalab/core-components/button'
 import { Input } from '@alfalab/core-components/input'
+import { Select } from '@alfalab/core-components/select'
 import { Textarea } from '@alfalab/core-components/textarea'
 import { Modal } from '@alfalab/core-components/modal'
 import { Typography } from '@alfalab/core-components/typography'
@@ -55,7 +56,11 @@ import {
 } from '../../model/local-draft'
 import styles from './ApplicationForm.module.scss'
 
-const emptyDraft = { description: '', amount: '', termMonths: '', purpose: '' }
+const emptyDraft = { description: '', amount: '', termDays: '', purpose: '' }
+const termOptions = [30, 60, 90].map((days) => ({
+  key: String(days),
+  content: `${days} дней`,
+}))
 const formSteps = [
   'Параметры финансирования',
   'Данные бизнеса',
@@ -102,7 +107,7 @@ function financingFields(responseForm: ApplicationForm) {
   return {
     description: responseForm.step1_financingParameters.businessTask ?? '',
     amount: inputValue(responseForm.step1_financingParameters.amount),
-    termMonths: inputValue(responseForm.step1_financingParameters.termMonths),
+    termDays: inputValue(responseForm.step1_financingParameters.termDays),
     purpose: responseForm.step1_financingParameters.purpose ?? '',
   }
 }
@@ -122,7 +127,7 @@ function applicantFields(responseForm: ApplicationForm): IpApplicationData {
           : (applicant.type ?? ''),
     taxSystem: applicant.taxSystem ?? '',
     monthlyRevenue: inputValue(financials.monthlyRevenue),
-    monthlyDebtPayment: inputValue(financials.existingMonthlyDebtPayment),
+    existingDebt: inputValue(financials.existingDebt),
     personalData: consents.personalData,
     bkiRequest: consents.bkiRequest,
     fnsRequest: consents.fnsRequest,
@@ -173,12 +178,18 @@ function ApplicationFormEditor({
       return local
     return null
   })
+  const needsFinancingReview = Boolean(
+    !localDraft &&
+      initialDraft &&
+      initialDraft.currentStep > 0 &&
+      initialDraft.form.step1_financingParameters.termDays === null,
+  )
   const [form, setForm] = useState(() =>
     localDraft
       ? {
           description: localDraft.description,
           amount: localDraft.amount,
-          termMonths: localDraft.termMonths,
+          termDays: localDraft.termDays,
           purpose: localDraft.purpose,
         }
       : initialDraft
@@ -187,7 +198,8 @@ function ApplicationFormEditor({
   )
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(
-    localDraft?.currentStep ?? initialDraft?.currentStep ?? 0,
+    localDraft?.currentStep ??
+      (needsFinancingReview ? 0 : (initialDraft?.currentStep ?? 0)),
   )
   const [started, setStarted] = useState(
     localDraft?.started ?? Boolean(initialDraft),
@@ -218,6 +230,7 @@ function ApplicationFormEditor({
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const formRef = useRef<HTMLFormElement>(null)
+  const termRef = useRef<HTMLDivElement>(null)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const discardButtonRef = useRef<HTMLButtonElement>(null)
@@ -244,12 +257,20 @@ function ApplicationFormEditor({
   const steps = isIp ? ipFormSteps : formSteps
   const [ipEdits, setIpEdits] = useState<Partial<IpApplicationData>>(
     localDraft?.ipEdits ??
-      (initialDraft ? applicantFields(initialDraft.form) : {}),
+      (initialDraft
+        ? {
+            ...applicantFields(initialDraft.form),
+            ...(needsFinancingReview ? { existingDebt: '' } : {}),
+          }
+        : {}),
   )
   const [ipConfirmed, setIpConfirmed] = useState(
     localDraft?.confirmed ??
       initialDraft?.form.prefilled?.confirmedByUser ??
       false,
+  )
+  const [needsDebtReview, setNeedsDebtReview] = useState(
+    localDraft?.needsDebtReview ?? needsFinancingReview,
   )
   const ipData: IpApplicationData = {
     companyName: company?.name ?? '',
@@ -257,7 +278,7 @@ function ApplicationFormEditor({
     legalForm: 'ИП',
     taxSystem: '',
     monthlyRevenue: '',
-    monthlyDebtPayment: '0',
+    existingDebt: '0',
     personalData: false,
     bkiRequest: false,
     fnsRequest: false,
@@ -274,6 +295,8 @@ function ApplicationFormEditor({
 
   function updateIpData(patch: Partial<IpApplicationData>) {
     const next = { ...ipData, ...patch }
+    if (patch.existingDebt !== undefined && patch.existingDebt.trim())
+      setNeedsDebtReview(false)
     if (next.personalData && next.bkiRequest && next.fnsRequest) {
       if (!acceptedAt) setAcceptedAt(new Date().toISOString())
     } else {
@@ -304,6 +327,7 @@ function ApplicationFormEditor({
     setForm(financingFields(responseForm))
     setIpEdits(applicantFields(responseForm))
     setIpConfirmed(responseForm.prefilled?.confirmedByUser ?? false)
+    setNeedsDebtReview(false)
     setAcceptedAt(consents.acceptedAt)
     setDraftCreatedAt(responseForm.createdAt ?? new Date().toISOString())
   }
@@ -333,7 +357,7 @@ function ApplicationFormEditor({
         businessTask:
           nullableText(form.description) ?? nullableText(form.purpose),
         amount: numberOrNull(form.amount),
-        termMonths: numberOrNull(form.termMonths),
+        termDays: numberOrNull(form.termDays),
         purpose: nullableText(form.purpose),
       },
       step2_businessData: {
@@ -354,7 +378,11 @@ function ApplicationFormEditor({
         },
         financials: {
           monthlyRevenue: numberOrNull(ipData.monthlyRevenue),
-          existingMonthlyDebtPayment: numberOrNull(ipData.monthlyDebtPayment),
+          existingDebt: ipData.existingDebt.trim()
+            ? numberOrNull(ipData.existingDebt)
+            : needsDebtReview
+              ? null
+              : 0,
         },
       },
       prefilled: {
@@ -392,6 +420,7 @@ function ApplicationFormEditor({
           started,
           serverForm,
           confirmed: ipConfirmed,
+          needsDebtReview,
           acceptedAt,
           createdAt: draftCreatedAt,
           aiFilled: [...aiFilled],
@@ -411,6 +440,7 @@ function ApplicationFormEditor({
     started,
     serverForm,
     ipConfirmed,
+    needsDebtReview,
     acceptedAt,
     draftCreatedAt,
     aiFilled,
@@ -478,6 +508,7 @@ function ApplicationFormEditor({
       setForm(emptyDraft)
       setIpEdits({})
       setIpConfirmed(false)
+      setNeedsDebtReview(false)
       setAcceptedAt(null)
       setRevision(null)
       setServerForm(null)
@@ -541,6 +572,7 @@ function ApplicationFormEditor({
       setForm(emptyDraft)
       setIpEdits({})
       setIpConfirmed(false)
+      setNeedsDebtReview(false)
       setServerForm(null)
       setAiFilled(new Set())
       setMissingFields(new Set())
@@ -589,7 +621,7 @@ function ApplicationFormEditor({
     if (submitting.current || saving.current) return
     const result = createApplicationSchema.safeParse({
       amount: Number(form.amount.replace(/\s/g, '').replace(',', '.')),
-      termMonths: Number(form.termMonths),
+      termDays: Number(form.termDays),
       purpose: form.purpose,
     })
     if (!result.success) {
@@ -602,12 +634,14 @@ function ApplicationFormEditor({
         ),
       )
       if (step !== 0) setStep(0)
-      else
-        formRef.current
-          ?.querySelector<HTMLInputElement>(
-            `[name="${String(result.error.issues[0]?.path[0])}"]`,
-          )
-          ?.focus()
+      else {
+        const field = String(result.error.issues[0]?.path[0])
+        if (field === 'termDays') termRef.current?.focus()
+        else
+          formRef.current
+            ?.querySelector<HTMLInputElement>(`[name="${field}"]`)
+            ?.focus()
+      }
       return
     }
     const businessTask = form.description.trim() || result.data.purpose
@@ -618,9 +652,13 @@ function ApplicationFormEditor({
       if (step !== 0) setStep(0)
       return
     }
-    if (isIp && step === 1) {
+    if (isIp && (step === 1 || step === steps.length - 1)) {
       const revenue = numberOrNull(ipData.monthlyRevenue)
-      const debt = numberOrNull(ipData.monthlyDebtPayment)
+      const debt = ipData.existingDebt.trim()
+        ? numberOrNull(ipData.existingDebt)
+        : needsDebtReview
+          ? null
+          : 0
       const businessErrors: Record<string, string> = {}
       if (!ipData.companyName.trim())
         businessErrors.companyName = 'Укажите название'
@@ -628,10 +666,11 @@ function ApplicationFormEditor({
         businessErrors.inn = 'ИНН ИП должен содержать 12 цифр'
       if (!ipData.taxSystem)
         businessErrors.taxSystem = 'Выберите систему налогообложения'
-      if (revenue === null || revenue < 1)
-        businessErrors.monthlyRevenue = 'Укажите среднемесячную выручку'
+      if (revenue === null || revenue <= 0)
+        businessErrors.monthlyRevenue =
+          'Среднемесячная выручка должна быть больше 0 ₽'
       if (debt === null || debt < 0)
-        businessErrors.monthlyDebtPayment = 'Укажите платеж от 0 ₽'
+        businessErrors.existingDebt = 'Укажите задолженность от 0 ₽'
       if (!ipData.personalData)
         businessErrors.personalData = 'Подтвердите согласие'
       if (!ipData.bkiRequest) businessErrors.bkiRequest = 'Подтвердите согласие'
@@ -720,7 +759,7 @@ function ApplicationFormEditor({
             maxLength={2000}
             value={form.description}
             error={errors.description}
-            placeholder="Нужно 3 млн ₽ на закупку товара перед сезоном, примерно на два года"
+            placeholder="Нужно 3 млн ₽ на закупку товара перед сезоном, на 90 дней"
             onChange={(_, { value }) =>
               setForm({ ...form, description: value })
             }
@@ -952,6 +991,13 @@ function ApplicationFormEditor({
             <h2 ref={stepHeadingRef} tabIndex={-1} className={styles.stepTitle}>
               {steps[step]}
             </h2>
+            {needsDebtReview && (
+              <p role="status">
+                Условия изменились: выберите срок в днях и укажите общий остаток
+                долга вместо ежемесячного платежа. Остальные данные черновика
+                сохранены.
+              </p>
+            )}
             {step === 0 && (
               <>
                 {form.description.trim() && (
@@ -991,28 +1037,31 @@ function ApplicationFormEditor({
                       setForm({ ...form, amount: value })
                     }
                   />
-                  <Input
-                    name="termMonths"
+                  <Select
+                    ref={termRef}
+                    id={`${id}-termDays`}
+                    name="termDays"
                     block
-                    label="Срок, месяцев"
+                    label="Срок, дней"
                     labelView="outer"
-                    inputMode="numeric"
-                    value={form.termMonths}
+                    options={termOptions}
+                    selected={form.termDays || null}
+                    placeholder="Выберите срок"
                     hint={
-                      aiFilled.has('step1_financingParameters.termMonths')
+                      aiFilled.has('step1_financingParameters.termDays')
                         ? 'Заполнено ИИ, проверьте'
                         : undefined
                     }
                     error={
-                      errors.termMonths ??
+                      errors.termDays ??
                       (missingFields.has(
-                        'step1_financingParameters.termMonths',
-                      ) && !form.termMonths.trim()
+                        'step1_financingParameters.termDays',
+                      ) && !form.termDays.trim()
                         ? 'Заполните поле'
                         : undefined)
                     }
-                    onChange={(_, { value }) =>
-                      setForm({ ...form, termMonths: value })
+                    onChange={({ selected }) =>
+                      setForm({ ...form, termDays: selected?.key ?? '' })
                     }
                   />
                   <Input
@@ -1041,8 +1090,9 @@ function ApplicationFormEditor({
                   />
                 </div>
                 <p>
-                  Сумма от 10 000 ₽, срок от 1 до 120 месяцев. Подходящие
-                  продукты и условия будут доступны после рассмотрения заявки.
+                  Сумма от 50 000 до 20 000 000 ₽, срок 30, 60 или 90 дней.
+                  Подходящие продукты и условия будут доступны после
+                  рассмотрения заявки.
                 </p>
               </>
             )}
@@ -1158,20 +1208,18 @@ function ApplicationFormEditor({
                       />
                     </div>
                     <div>
-                      <FieldLabel
-                        htmlFor={`${id}-reviewTermMonths`}
-                        text="Срок, месяцев"
-                        hint="Срок, на который нужны деньги"
-                      />
-                      <Input
-                        id={`${id}-reviewTermMonths`}
-                        name="reviewTermMonths"
+                      <Select
+                        id={`${id}-reviewTermDays`}
+                        name="reviewTermDays"
                         block
-                        aria-label="Срок, месяцев"
-                        inputMode="numeric"
-                        value={form.termMonths}
-                        onChange={(_, { value }) =>
-                          setForm({ ...form, termMonths: value })
+                        label="Срок, дней"
+                        labelView="outer"
+                        hint="Доступные сроки: 30, 60 или 90 дней"
+                        options={termOptions}
+                        selected={form.termDays || null}
+                        placeholder="Выберите срок"
+                        onChange={({ selected }) =>
+                          setForm({ ...form, termDays: selected?.key ?? '' })
                         }
                       />
                     </div>
@@ -1216,7 +1264,7 @@ function ApplicationFormEditor({
                     </div>
                     <div>
                       <dt>Срок</dt>
-                      <dd>{form.termMonths} мес.</dd>
+                      <dd>{form.termDays} дней</dd>
                     </div>
                     <div>
                       <dt>Цель</dt>
