@@ -21,6 +21,7 @@ public class AiController {
 
     @PostMapping("/prefill")
     public PrefillResponse prefill(@Valid @RequestBody PrefillRequest body, HttpServletRequest request) {
-        return formService.prefill(sessionContext.requireCompanyId(request), body.text());
+        var user = sessionContext.requireUser(request);
+        return formService.prefill(sessionContext.requireCompanyId(request), user.getPhone(), user.getEmail(), body.text());
     }
 }

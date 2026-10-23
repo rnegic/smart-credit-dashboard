@@ -48,6 +48,6 @@ public class AuthController {
     private MeResponse toMe(User u) {
         String form = u.getCompanyId() == null ? null :
                 companyRepository.findById(u.getCompanyId()).map(Company::getLegalForm).orElse(null);
-        return new MeResponse(u.getId(), u.getFullName(), u.getRole().name(), u.getCompanyId(), form);
+        return new MeResponse(u.getId(), u.getFullName(), u.getRole().name(), u.getCompanyId(), form, u.getPhone(), u.getEmail());
     }
 }

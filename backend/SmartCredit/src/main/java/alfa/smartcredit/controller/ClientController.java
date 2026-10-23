@@ -4,6 +4,7 @@ import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
 import alfa.smartcredit.dto.LegalFormRequest;
 import alfa.smartcredit.service.ApplicationService;
+import alfa.smartcredit.service.ProfileService;
 import alfa.smartcredit.service.SessionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -20,6 +21,7 @@ import java.util.List;
 public class ClientController {
     private final ApplicationService applicationService;
     private final SessionContext sessionContext;
+    private final ProfileService profileService;
 
     @PostMapping("/company/legal-form")
     public ResponseEntity<Void> legalForm(@Valid @RequestBody LegalFormRequest body, HttpServletRequest request) {
@@ -30,7 +32,12 @@ public class ClientController {
     @PostMapping("/applications")
     @ResponseStatus(HttpStatus.CREATED)
     public ApplicationView create(@Valid @RequestBody ApplicationFormDto body, HttpServletRequest request) {
-        return applicationService.create(sessionContext.requireCompanyId(request), body);
+        var user = sessionContext.requireUser(request);
+        ApplicationView view = applicationService.create(sessionContext.requireCompanyId(request), body);
+        // контакты из анкеты сохраняем в личный кабинет, если там их ещё нет
+        var applicant = body.step2().applicant();
+        profileService.fillIfEmpty(user.getId(), applicant.phone(), applicant.email());
+        return view;
     }
 
     @GetMapping("/applications")

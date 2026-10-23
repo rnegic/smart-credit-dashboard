@@ -3,6 +3,7 @@ package alfa.smartcredit.service;
 import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
 import alfa.smartcredit.dto.DecisionRequest;
+import alfa.smartcredit.event.ApplicationStatusChangedEvent;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
 import alfa.smartcredit.model.CreditApplication;
@@ -16,6 +17,7 @@ import alfa.smartcredit.repository.CompanyRepository;
 import alfa.smartcredit.repository.CreditApplicationRepository;
 import alfa.smartcredit.repository.OfferRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +42,9 @@ public class ApplicationService {
     private final OfferRepository offerRepository;
     private final ScoringService scoringService;
     private final DecisionEngine decisionEngine;
+    private final AiCommentService aiCommentService;
     private final ObjectMapper mapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void setLegalForm(Long companyId, String legalForm) {
@@ -57,11 +61,11 @@ public class ApplicationService {
         var s1 = form.step1();
         var fin = form.step2().financials();
 
-        // 1) скоринг (Группы 2-3 ТЗ) и 2) итоговое решение (DecisionEngine)
+        // 1) скоринг (Группы 2-3 ТЗ) и 2) РЕКОМЕНДАЦИЯ DecisionEngine. Итоговое решение выносит сотрудник банка.
         ScoringService.Result r = scoringService.score(company, form);
-        DecisionEngine.Decision d = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r);
-        if (d.status() == DecisionStatus.INFO_REQUIRED)
-            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INFO_REQUIRED", d.reason());
+        DecisionEngine.Decision rec = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r);
+        if (rec.status() == DecisionStatus.INFO_REQUIRED)
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INFO_REQUIRED", rec.reason());
 
         CreditApplication a = new CreditApplication();
         a.setCompanyId(companyId);
@@ -76,19 +80,13 @@ public class ApplicationService {
         a.setRiskClass(r.riskClass().name());
         a.setCalculatedLimit(r.calculatedLimit());
         a.setScoringData(mapper.valueToTree(r));
-        a.setDecision(d.status());
-        a.setFinalRate(d.finalRate());
-        a.setAiComment(d.reason());
-        a.setStatus(switch (d.status()) {
-            case DECLINED -> ApplicationStatus.DECLINED;
-            case APPROVED, ALTERNATIVE_OFFER -> ApplicationStatus.OFFER_READY;
-            case MANUAL_REVIEW, INFO_REQUIRED -> ApplicationStatus.IN_REVIEW;
-        });
-        a = applicationRepository.save(a);
+        a.setRecommendation(mapper.valueToTree(
+                new ApplicationView.Recommendation(rec.status(), rec.finalRate(), rec.amount(), rec.reason())));
+        a.setAiComment(aiCommentService.comment(r, rec, s1.amount(), s1.termDays()));
 
-        // APPROVED / ALTERNATIVE_OFFER: сразу формируем предложение клиенту
-        if (d.status() == DecisionStatus.APPROVED || d.status() == DecisionStatus.ALTERNATIVE_OFFER)
-            createOffer(a, d.amount(), s1.termDays(), d.finalRate());
+        // независимо от класса A/B/C и рекомендации заявка идёт к сотруднику; decision/finalRate/offer появятся после его решения
+        a.setStatus(ApplicationStatus.IN_REVIEW);
+        a = applicationRepository.save(a);
 
         // сохраняем форму целиком, но личность заявителя берём у сервера, не у клиента
         ObjectNode tree = mapper.valueToTree(form);
@@ -98,6 +96,11 @@ public class ApplicationService {
         a.setFormData(tree);
         applicationRepository.saveAndFlush(a);
         draftRepository.deleteByCompanyId(companyId);
+
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                companyId, a.getId(), ApplicationStatus.IN_REVIEW.name(),
+                String.format("Заявка №%d на %s подана и находится на рассмотрении банка.",
+                        a.getId(), money(s1.amount()))));
 
         return toView(a, company, false);
     }
@@ -138,20 +141,29 @@ public class ApplicationService {
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_DECIDED", "По заявке уже принято решение");
         a.setOfficerComment(req.comment());
 
+        ApplicationView.Recommendation rec = a.getRecommendation() == null ? null
+                : mapper.treeToValue(a.getRecommendation(), ApplicationView.Recommendation.class);
+
         switch (req.action()) {
             case DECLINE -> a.setStatus(ApplicationStatus.DECLINED);
             case APPROVE -> {
+                // запрошенные клиентом условия; ставка из рекомендации (rate + премия класса + отраслевая) или расчёт заново
                 int termDays = termDaysOf(a);
-                BigDecimal finalRate = a.getFinalRate() != null ? a.getFinalRate() : manualFinalRate(a, termDays);
+                BigDecimal finalRate = rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
                 createOffer(a, a.getAmount(), termDays, finalRate);
                 a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
             case OFFER_ALTERNATIVE -> {
-                if (req.amount() == null || req.termDays() == null || req.finalRate() == null)
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                            "Для альтернативы нужны amount, termDays, finalRate");
-                createOffer(a, req.amount(), req.termDays(), req.finalRate());
+                // что не передано менеджером, берём из рекомендации системы, иначе из заявки
+                int termDays = req.termDays() != null ? req.termDays() : termDaysOf(a);
+                BigDecimal amount = req.amount() != null ? req.amount()
+                        : rec != null && rec.amount() != null ? rec.amount()
+                        : a.getAmount().min(a.getCalculatedLimit() != null ? a.getCalculatedLimit() : a.getAmount());
+                BigDecimal finalRate = req.finalRate() != null ? req.finalRate()
+                        : rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
+                createOffer(a, amount, termDays, finalRate);
+                a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
         }
@@ -160,6 +172,22 @@ public class ApplicationService {
             case APPROVE -> DecisionStatus.APPROVED;
             case OFFER_ALTERNATIVE -> DecisionStatus.ALTERNATIVE_OFFER;
         });
+        // строим сообщение под фактическое состояние
+        String text = switch (a.getStatus()) {
+            case DECLINED -> String.format(
+                    "По заявке №%d принято решение об отказе. Комментарий банка: %s",
+                    a.getId(), req.comment());
+            case OFFER_READY -> String.format(
+                    "По заявке №%d одобрено предложение: %s под %s%% на %d дн. Подпишите его в личном кабинете.",
+                    a.getId(), money(a.getFinalRate() != null ? offerAmount(a.getId()) : a.getAmount()),
+                    pct(a.getFinalRate()), termDaysOf(a));
+            default -> null;
+        };
+        if (text != null) {
+            eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                    a.getCompanyId(), a.getId(), a.getStatus().name(), text));
+        }
+
         return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow(), true);
     }
 
@@ -172,6 +200,14 @@ public class ApplicationService {
         o.setStatus(OfferStatus.ACCEPTED);
         find(o.getApplicationId()).setStatus(ApplicationStatus.ACCEPTED);
         // TODO: здесь же можно создать Loan + график платежей
+
+        o.setStatus(OfferStatus.ACCEPTED);
+        CreditApplication app = find(o.getApplicationId());
+        app.setStatus(ApplicationStatus.ACCEPTED);
+
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                app.getCompanyId(), app.getId(), ApplicationStatus.ACCEPTED.name(),
+                String.format("Вы подписали предложение по заявке №%d. Кредит будет оформлен.", app.getId())));
     }
 
     // ---------- helpers ----------
@@ -219,10 +255,24 @@ public class ApplicationService {
                 : mapper.treeToValue(a.getScoringData(), ScoringService.Result.class);
         if (scoring != null && !forBank) scoring = scoring.forClient();
 
+        // рекомендация системы и ИИ-комментарий видит только сотрудник банка
+        ApplicationView.Recommendation recommendation = !forBank || a.getRecommendation() == null ? null
+                : mapper.treeToValue(a.getRecommendation(), ApplicationView.Recommendation.class);
+
         return new ApplicationView(a.getId(), c.getName(), c.getInn(), c.getLegalForm(),
                 a.getAmount(), termDaysOf(a), a.getRate(), a.getPurpose(), a.getBusinessTask(),
                 a.getStatus().name(), a.getDecision() == null ? null : a.getDecision().name(), a.getFinalRate(),
-                a.getRiskScore(), a.getRiskClass(), a.getAiComment(), a.getOfficerComment(),
-                a.getCreatedAt(), scoring, offer);
+                a.getRiskScore(), a.getRiskClass(), forBank ? a.getAiComment() : null, a.getOfficerComment(),
+                a.getCreatedAt(), scoring, recommendation, offer);
+    }
+    private BigDecimal offerAmount(Long applicationId) {
+        return offerRepository.findFirstByApplicationIdOrderByIdDesc(applicationId)
+                .map(Offer::getAmount).orElse(BigDecimal.ZERO);
+    }
+    private static String money(BigDecimal v) {
+        return String.format(java.util.Locale.forLanguageTag("ru-RU"), "%,.0f ₽", v);
+    }
+    private static String pct(BigDecimal v) {
+        return v == null ? "—" : v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
 }

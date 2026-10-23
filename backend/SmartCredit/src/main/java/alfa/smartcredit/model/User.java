@@ -21,4 +21,6 @@ public class User {
     @Column(name = "full_name") private String fullName;
     private String description;
     @Column(name = "company_id") private Long companyId;
+    private String phone;
+    private String email;
 }

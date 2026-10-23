@@ -50,6 +50,9 @@ public class CreditApplication {
     private JsonNode scoringData;                                       // снимок скоринга
 
     @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode recommendation;                                    // рекомендация системы для сотрудника банка
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "form_data")
     private JsonNode formData;
 }
