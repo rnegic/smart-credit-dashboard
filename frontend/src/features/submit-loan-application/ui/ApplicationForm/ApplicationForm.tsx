@@ -34,12 +34,13 @@ import {
 } from '@/entities/application-form'
 import { useDashboard } from '@/entities/dashboard'
 import { getIndustryGroup } from '@/entities/company'
-import { sessionKey } from '@/entities/session'
+import { isCurrentSession, sessionKey, useSession } from '@/entities/session'
 import {
   apiRequest,
   apiOptionalRequest,
   apiEmpty,
   ApiError,
+  getSessionGeneration,
   useApiScope,
 } from '@/shared/api'
 import { ROUTES } from '@/shared/config'
@@ -262,11 +263,13 @@ function ApplicationFormEditor({
   )
   const id = useId()
   const cache = useQueryClient()
+  const session = useSession()
   const dashboard = useDashboard()
   const draft = useApplicationDraft()
   const draftKey = ['client', scope, 'application-draft']
   const navigate = useNavigate()
   const company = dashboard.data?.company
+  const contacts = session.data?.userId === scope ? session.data : null
   const isIp = company?.legalForm === 'IP'
   const steps = isIp ? ipFormSteps : formSteps
   const [ipEdits, setIpEdits] = useState<Partial<IpApplicationData>>(
@@ -301,8 +304,12 @@ function ApplicationFormEditor({
     registrationDate: '',
     okved: company?.okved ?? '',
     registrationAddress: '',
-    phone: '',
-    email: '',
+    phone: serverForm
+      ? (serverForm.step2_businessData.applicant.phone ?? '')
+      : (contacts?.phone ?? ''),
+    email: serverForm
+      ? (serverForm.step2_businessData.applicant.email ?? '')
+      : (contacts?.email ?? ''),
     ...ipEdits,
     industry:
       getIndustryGroup(ipEdits.okved ?? company?.okved)?.key ??
@@ -567,12 +574,31 @@ function ApplicationFormEditor({
   })
 
   const submit = useMutation({
-    mutationFn: (body: z.infer<typeof applicationFormSubmissionSchema>) =>
-      apiRequest('/api/applications', applicationViewSchema, {
+    mutationFn: ({
+      body,
+      generation,
+    }: {
+      body: z.infer<typeof applicationFormSubmissionSchema>
+      generation: number
+    }) => {
+      if (!isCurrentSession(cache, scope, generation))
+        throw new ApiError(
+          409,
+          'SESSION_CHANGED',
+          'Профиль изменился. Повторите действие.',
+        )
+      return apiRequest('/api/applications', applicationViewSchema, {
         method: 'POST',
         body: JSON.stringify(body),
-      }),
-    onSuccess: async () => {
+      })
+    },
+    onSuccess: async (_, { generation }) => {
+      if (!isCurrentSession(cache, scope, generation)) return
+      await Promise.all([
+        cache.cancelQueries({ queryKey: sessionKey, exact: true }),
+        cache.cancelQueries({ queryKey: ['client', scope] }),
+      ])
+      if (!isCurrentSession(cache, scope, generation)) return
       try {
         sessionStorage.removeItem(storageKey)
       } catch {
@@ -593,10 +619,15 @@ function ApplicationFormEditor({
       savedSnapshot.current = ''
       cache.setQueryData(draftKey, null)
       setOpen(false)
-      await cache.invalidateQueries({ queryKey: ['client', scope] })
-      void navigate(ROUTES.applications, { replace: true })
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ['client', scope] }),
+        cache.invalidateQueries({ queryKey: sessionKey, exact: true }),
+      ])
+      if (isCurrentSession(cache, scope, generation))
+        void navigate(ROUTES.applications, { replace: true })
     },
-    onError: (error) => {
+    onError: (error, { generation }) => {
+      if (!isCurrentSession(cache, scope, generation)) return
       if (error instanceof ApiError && error.code === 'LEGAL_FORM_REQUIRED') {
         setOpen(false)
         void cache.invalidateQueries({ queryKey: sessionKey })
@@ -605,6 +636,7 @@ function ApplicationFormEditor({
     onSettled: () => {
       submitting.current = false
     },
+    retry: false,
   })
 
   function start(manualInput: boolean, trigger: HTMLButtonElement) {
@@ -755,7 +787,7 @@ function ApplicationFormEditor({
       return
     }
     submitting.current = true
-    submit.mutate(submission.data)
+    submit.mutate({ body: submission.data, generation: getSessionGeneration() })
   }
   function focusInvalidField(name: string | undefined) {
     if (!name) return

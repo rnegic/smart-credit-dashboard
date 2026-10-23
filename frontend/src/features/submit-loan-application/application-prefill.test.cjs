@@ -6,7 +6,7 @@ const { test } = require('node:test')
 const ts = require('typescript')
 const React = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
-const { QueryClient, MutationObserver } = require('@tanstack/react-query')
+const { QueryClient, QueryObserver, MutationObserver } = require('@tanstack/react-query')
 
 const root = path.resolve(__dirname, '../..')
 const feature = 'features/submit-loan-application'
@@ -43,6 +43,9 @@ const formEntity = load('entities/application-form/index.ts', {
 const loanEntity = load('entities/loan-application/index.ts', {
   zod: require('zod'), '@tanstack/react-query': {}, '@/shared/api': {},
   './get-application-progress': load('entities/loan-application/get-application-progress.ts'),
+})
+const profileEntity = load('entities/profile/index.ts', {
+  zod: require('zod'), '@tanstack/react-query': {}, '@/shared/api': {},
 })
 
 const Text = ({ children, tag = 'span' }) => React.createElement(tag, null, children)
@@ -181,19 +184,20 @@ function elements(element) {
 const settle = () => new Promise(setImmediate)
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
-function editor(t, { abortAware = false, localDraft: initialLocal = null, initialDraft = null } = {}) {
+function editor(t, { abortAware = false, localDraft: initialLocal = null, initialDraft = null, session: initialSession = {} } = {}) {
   const time = clock()
   const storage = new Map()
-  if (initialLocal) storage.set('application-draft:client:first', JSON.stringify(initialLocal))
+  if (initialLocal) storage.set('application-draft:1', JSON.stringify(initialLocal))
   const sessionEvents = new EventTarget()
   const requests = []
   const invalidations = []
+  const navigations = []
   const runtimes = []
   const observers = []
   const cache = new QueryClient({ defaultOptions: { mutations: { retry: 2, gcTime: Infinity } } })
   const invalidate = cache.invalidateQueries.bind(cache)
   cache.invalidateQueries = (options) => { invalidations.push(options); return invalidate(options) }
-  let scope = 'client:first'
+  let scope = 1
   let generation = 0
   let switching = false
   let runtime
@@ -203,6 +207,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
   const api = {
     ApiError, sessionEvents, useApiScope: () => scope,
     getSessionGeneration: () => generation, isSessionSwitching: () => switching,
+    syncSessionChanges() {},
     apiRequest: (url, schema, options) => {
       let resolve
       let reject
@@ -256,9 +261,16 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
   const prefill = load(`${feature}/model/use-application-prefill.ts`, {
     react: hooks, '@tanstack/react-query': query, '@/entities/application-form': formEntity, '@/shared/api': api,
   }, globals)
+  const sessionEntity = load('entities/session/index.ts', {
+    react: hooks, zod: require('zod'), '@tanstack/react-query': query, '@/shared/api': api,
+  }, globals)
+  cache.setQueryData(sessionEntity.sessionKey, {
+    userId: 1, fullName: 'Тестовый Предприниматель', role: 'CLIENT', companyId: 1,
+    legalForm: 'IP', phone: null, email: null, ...initialSession,
+  })
   const { ApplicationForm } = load(`${feature}/ui/ApplicationForm/ApplicationForm.tsx`, {
     react: hooks, zod: require('zod'), '@tanstack/react-query': query,
-    'react-router-dom': { useNavigate: () => () => {} },
+    'react-router-dom': { useNavigate: () => (...args) => navigations.push(args) },
     '@alfalab/core-components/button': { Button }, '@alfalab/core-components/input': { Input },
     '@alfalab/core-components/select': { Select }, '@alfalab/core-components/textarea': { Textarea },
     '@alfalab/core-components/modal': { Modal }, '@alfalab/core-components/typography': { Typography },
@@ -268,7 +280,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     '@/entities/loan-application': loanEntity,
     '@/entities/application-form': { ...formEntity, useApplicationDraft: () => draft },
     '@/entities/dashboard': { useDashboard: () => dashboard }, '@/entities/company': companyEntity,
-    '@/entities/session': { sessionKey: ['session'] }, '@/shared/api': api,
+    '@/entities/session': { ...sessionEntity, useSession: () => ({ data: cache.getQueryData(sessionEntity.sessionKey) }) }, '@/shared/api': api,
     '@/shared/config': { ROUTES: { applications: '/applications' } },
     '@/shared/lib': { formatMoney: (value) => String(value) },
     '@/shared/ui': { FieldLabel: () => null, RequestState: () => null },
@@ -278,7 +290,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     './ApplicationForm.module.scss': cssModule,
   }, globals)
   const h = {
-    time, requests, storage, invalidations, observers, dashboard, runtimes,
+    time, requests, storage, invalidations, navigations, observers, dashboard, runtimes, cache, api, sessionEntity,
     render() {
       const outer = ApplicationForm({ headingTag: 'h2' })
       if (!runtime || key !== outer.key) {
@@ -298,6 +310,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     get live() { return this.find((item) => item.props['aria-live'] === 'polite') },
     get modal() { return this.find((item) => item.type === Modal && item.props.className === 'modal') },
     get form() { return this.find((item) => item.type === 'form') },
+    get ip() { return this.find((item) => item.type === IpApplicationFields) },
     get buttons() { return React.Children.toArray(this.find((item) => item.props.className === 'actions').props.children) },
     field(name) { return this.find((item) => item.props.name === name) },
     change(name, value) {
@@ -334,7 +347,11 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
       this.render()
     },
     close() { this.modal.props.onClose(); this.render() },
-    changeScope() { scope = 'client:second'; this.render() },
+    changeScope() { scope = 2; this.render() },
+    refreshSession(patch) {
+      cache.setQueryData(sessionEntity.sessionKey, (previous) => ({ ...previous, ...patch }))
+      this.render()
+    },
     changeSession(notify = true) {
       generation++
       switching = true
@@ -901,7 +918,7 @@ test('manual entry uses a registry date returned by draft save without inventing
   h.editIp({ ogrnip: '123456789012345', registrationAddress: 'Тестовый адрес', phone: '+79990000000', email: 'test@example.com' }, 'registration')
   h.next()
   assert.equal((await h.resolveDraft()).form.step2_businessData.applicant.registrationDate, '2016-04-12')
-  const local = JSON.parse(h.storage.get('application-draft:client:first'))
+  const local = JSON.parse(h.storage.get('application-draft:1'))
   assert.equal(local.serverForm.step2_businessData.applicant.registrationDate, '2016-04-12')
   h.next()
   await settle()
@@ -973,5 +990,245 @@ test('hiding registry date does not weaken visible registration, business or con
     const errors = h.find((item) => item.type === IpApplicationFields).props.errors
     assert.ok(errors[errorField])
     assert.equal(errors.registrationDate, undefined)
+  }
+})
+
+test('manual entry uses exact session contacts without an AI request and keeps the saved draft snapshot', async (t) => {
+  const contacts = { phone: '+7 (999) 111-00-01', email: 'Owner+bank@Example.com' }
+  const h = editor(t, { session: contacts })
+  h.click(1)
+  h.render()
+  h.change('amount', '200000')
+  h.change('termDays', '60')
+  h.change('purpose', 'Закупка товара')
+  h.next()
+  const snapshot = await h.resolveDraft()
+  for (const field of ['phone', 'email']) {
+    assert.equal(snapshot.form.step2_businessData.applicant[field], contacts[field])
+    assert.equal(h.ip.props.value[field], contacts[field])
+  }
+  h.refreshSession({ phone: null, email: null })
+  assert.equal(h.ip.props.value.phone, contacts.phone)
+  assert.equal(h.ip.props.value.email, contacts.email)
+  assert.ok(h.requests.every((request) => request.url !== '/api/ai/prefill'))
+})
+
+test('session defaults fill only unused contacts and never overwrite typed values or explicit clears', (t) => {
+  const local = readyLocalDraft({ phone: '' })
+  delete local.ipEdits.email
+  const h = editor(t, { localDraft: local, session: { phone: '+79991110001', email: 'profile@example.com' } })
+  h.resume()
+  assert.equal(h.ip.props.value.phone, '')
+  assert.equal(h.ip.props.value.email, 'profile@example.com')
+  h.refreshSession({ phone: '+79991110002', email: 'updated@example.com' })
+  assert.equal(h.ip.props.value.phone, '')
+  assert.equal(h.ip.props.value.email, 'updated@example.com')
+  h.editIp({ phone: '+79992223344', email: '' }, 'registration')
+  h.refreshSession({ phone: null, email: null })
+  assert.equal(h.ip.props.value.phone, '+79992223344')
+  assert.equal(h.ip.props.value.email, '')
+  h.refreshSession({ phone: '+79991110003', email: 'refetched@example.com' })
+  assert.equal(h.ip.props.value.phone, '+79992223344')
+  assert.equal(h.ip.props.value.email, '')
+})
+
+test('local and server drafts, including null contacts, take precedence over session defaults', (t) => {
+  for (const source of ['local', 'server', 'local-server-form']) {
+    const form = response().form
+    form.step2_businessData.applicant.phone = null
+    form.step2_businessData.applicant.email = 'draft@example.com'
+    const local = readyLocalDraft({ phone: '', email: 'draft@example.com' })
+    if (source === 'local-server-form') {
+      local.serverForm = form
+      delete local.ipEdits.phone
+      delete local.ipEdits.email
+    }
+    const h = editor(t, {
+      session: { phone: '+79991110001', email: 'profile@example.com' },
+      ...(source === 'server'
+        ? { initialDraft: { form, currentStep: 3, aiFilled: [], missingFields: [], revision: 1, updatedAt: '2026-10-23T12:00:00Z' } }
+        : { localDraft: local }),
+    })
+    h.resume()
+    h.refreshSession({ phone: '+79991110002', email: null })
+    assert.equal(h.ip.props.value.phone, '', source)
+    assert.equal(h.ip.props.value.email, 'draft@example.com', source)
+  }
+})
+
+test('manual fallback after unavailable prefill still uses session contacts', async (t) => {
+  const contacts = { phone: '+79991110001', email: 'profile@example.com' }
+  const h = editor(t, { session: contacts })
+  h.begin()
+  await settle()
+  h.requests[0].reject(new ApiError(503, 'AI_UNAVAILABLE'))
+  await settle()
+  h.render()
+  assert.ok(h.html().includes(fallbackMessage))
+  h.change('amount', '200000')
+  h.change('termDays', '60')
+  h.change('purpose', 'Закупка товара')
+  h.next()
+  const snapshot = await h.resolveDraft()
+  assert.equal(snapshot.form.step2_businessData.applicant.phone, contacts.phone)
+  assert.equal(snapshot.form.step2_businessData.applicant.email, contacts.email)
+})
+
+test('prefill contacts and their automatic or missing annotations override unused session defaults exactly', async (t) => {
+  for (const contacts of [
+    { phone: '+7 (999) 222-33-44', email: 'prepared@example.com' },
+    { phone: null, email: 'prepared@example.com' },
+    { phone: '+79992223344', email: null },
+    { phone: null, email: null },
+  ]) {
+    const h = editor(t, { session: { phone: '+79991110001', email: 'session@example.com' } })
+    const prepared = response()
+    Object.assign(prepared.form.step2_businessData.applicant, contacts)
+    for (const field of ['phone', 'email']) {
+      prepared[contacts[field] === null ? 'missingFields' : 'aiFilled'].push(`step2_businessData.applicant.${field}`)
+    }
+    h.begin()
+    await settle()
+    h.requests[0].resolve(prepared)
+    await settle()
+    h.render()
+    h.next()
+    await h.resolveDraft()
+    h.refreshSession({ phone: '+79991110002', email: 'refresh@example.com' })
+    const rendered = renderIpFields('registration', { ...h.ip.props, section: 'registration' })
+    for (const field of ['phone', 'email']) {
+      assert.equal(h.ip.props.value[field], contacts[field] ?? '')
+      const input = rendered.inputs.find((item) => item.name === field)
+      assert.equal(input.required, true)
+      assert.equal(input.error, contacts[field] === null ? 'Заполните поле' : undefined)
+    }
+    assert.deepEqual([...h.ip.props.aiFilled], prepared.aiFilled)
+    assert.deepEqual([...h.ip.props.missingFields], prepared.missingFields)
+    assert.equal((rendered.html.match(/Заполнено автоматически, проверьте/g) || []).length, Object.values(contacts).filter(Boolean).length)
+    assert.ok(!rendered.html.includes('Заполнено ИИ'))
+  }
+})
+
+function submittedApplication() {
+  return {
+    id: 51, amount: 200000, termDays: 60, rate: 24.75, purpose: 'Закупка товара',
+    businessTask: description.trim(), companyName: 'ИП Тестовый Предприниматель', inn: '123456789012', legalForm: 'IP',
+    status: 'IN_REVIEW', decision: null, finalRate: null, offer: null, recommendation: null,
+    internalScore: 85, riskClass: 'A', aiComment: null, officerComment: null, scoring: null,
+    createdAt: '2026-10-23T12:00:00Z',
+  }
+}
+
+function observeContacts(t, h) {
+  const session = h.cache.getQueryData(h.sessionEntity.sessionKey)
+  const profile = { userId: session.userId, fullName: session.fullName, phone: session.phone, email: session.email }
+  h.cache.setQueryData(profileEntity.profileKey(1), profile)
+  for (const [queryKey, url, schema] of [
+    [h.sessionEntity.sessionKey, '/api/auth/me', h.sessionEntity.sessionSchema],
+    [profileEntity.profileKey(1), '/api/profile', profileEntity.profileSchema],
+  ]) {
+    const observer = new QueryObserver(h.cache, {
+      queryKey, staleTime: Infinity, gcTime: Infinity, retry: false,
+      queryFn: ({ signal }) => h.api.apiRequest(url, schema, { signal }),
+    })
+    t.after(observer.subscribe(() => {}))
+  }
+  return { session, profile }
+}
+
+test('initial POST stays IN_REVIEW with no decision or offer and refetches authoritative contacts instead of copying the form', async (t) => {
+  for (const existing of [
+    { phone: null, email: null },
+    { phone: '+79991110001', email: 'existing@example.com' },
+    { phone: null, email: 'existing@example.com' },
+  ]) {
+    const local = readyLocalDraft()
+    const h = editor(t, { localDraft: local, session: existing })
+    const before = observeContacts(t, h)
+    h.resume()
+    h.next()
+    await settle()
+    const request = h.requests[0]
+    assert.equal(request.url, '/api/applications')
+    assert.equal(request.options.method, 'POST')
+    request.resolve(submittedApplication())
+    await settle()
+    assert.deepEqual(plain(h.cache.getQueryData(h.sessionEntity.sessionKey)), before.session)
+    assert.deepEqual(plain(h.cache.getQueryData(profileEntity.profileKey(1))), before.profile)
+    assert.equal(h.navigations.length, 0)
+    assert.equal(h.cache.getQueryData(profileEntity.profileKey(1)).phone, existing.phone)
+    const contacts = {
+      phone: existing.phone ?? local.ipEdits.phone,
+      email: existing.email ?? local.ipEdits.email,
+    }
+    const me = h.requests.find((item) => item.url === '/api/auth/me')
+    const profile = h.requests.find((item) => item.url === '/api/profile')
+    assert.ok(me)
+    assert.ok(profile)
+    me.resolve({ ...before.session, ...contacts })
+    profile.resolve({ ...before.profile, ...contacts })
+    await settle()
+    h.render()
+    const result = h.observers.find((observer) => observer.getCurrentResult().variables?.body).getCurrentResult()
+    assert.equal(result.isSuccess, true)
+    assert.equal(result.data.status, 'IN_REVIEW')
+    for (const field of ['decision', 'finalRate', 'offer', 'recommendation']) assert.equal(result.data[field], null)
+    for (const field of ['phone', 'email']) {
+      assert.equal(h.cache.getQueryData(h.sessionEntity.sessionKey)[field], contacts[field])
+      assert.equal(h.cache.getQueryData(profileEntity.profileKey(1))[field], contacts[field])
+    }
+    assert.equal(h.cache.getQueryData(['client', 1, 'application-draft']), null)
+    assert.equal(h.storage.has('application-draft:1'), false)
+    assert.deepEqual(plain(h.navigations), [['/applications', { replace: true }]])
+    assert.deepEqual(plain(h.invalidations), [{ queryKey: ['client', 1] }, { queryKey: ['session'], exact: true }])
+  }
+})
+
+test('successful submission cancels older session and profile reads before refreshing contacts', async (t) => {
+  const h = editor(t, { localDraft: readyLocalDraft() })
+  const before = observeContacts(t, h)
+  void h.cache.refetchQueries()
+  await settle()
+  const oldReads = [...h.requests]
+  assert.equal(oldReads.length, 2)
+  h.resume()
+  h.next()
+  await settle()
+  h.requests.find((item) => item.url === '/api/applications').resolve(submittedApplication())
+  await settle()
+  assert.ok(oldReads.every((request) => request.options.signal.aborted))
+  const contacts = { phone: '+79990000000', email: 'test@example.com' }
+  for (const request of h.requests.filter((item) => !oldReads.includes(item) && item.options.method !== 'POST')) {
+    request.resolve({ ...(request.url === '/api/auth/me' ? before.session : before.profile), ...contacts })
+  }
+  await settle()
+  for (const request of oldReads) request.resolve(request.url === '/api/auth/me' ? before.session : before.profile)
+  await settle()
+  assert.equal(h.cache.getQueryData(h.sessionEntity.sessionKey).phone, contacts.phone)
+  assert.equal(h.cache.getQueryData(profileEntity.profileKey(1)).email, contacts.email)
+})
+
+test('obsolete submit callbacks cannot reset a draft, refresh a new session or navigate', async (t) => {
+  for (const moment of ['before-request', 'response', 'after-cancel']) {
+    const h = editor(t, { localDraft: readyLocalDraft() })
+    h.resume()
+    const before = [...h.storage]
+    if (moment === 'after-cancel') {
+      const cancel = h.cache.cancelQueries.bind(h.cache)
+      h.cache.cancelQueries = async (...args) => { await cancel(...args); h.changeSession(false) }
+    }
+    h.next()
+    if (moment === 'before-request') h.changeSession(false)
+    await settle()
+    if (moment === 'before-request') assert.equal(h.requests.length, 0)
+    else {
+      if (moment === 'response') h.changeSession(false)
+      h.requests[0].resolve(submittedApplication())
+      await settle()
+    }
+    assert.deepEqual([...h.storage], before)
+    assert.equal(h.invalidations.length, 0)
+    assert.equal(h.navigations.length, 0)
+    assert.equal(h.cache.getQueryData(['client', 1, 'application-draft']), undefined)
   }
 })
