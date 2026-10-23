@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: smart-credit-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: credit_cabinet
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d credit_cabinet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: "${IMAGE_PREFIX}/backend:${IMAGE_TAG:-latest}"
+    container_name: smart-credit-backend
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/credit_cabinet
+      SPRING_DATASOURCE_USERNAME: app
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://routerai.ru/api/v1}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-nvidia/nemotron-3.5-super-vl}"
+      OPENAI_RESPONSE_FORMAT: json_object
+      OPENAI_CONNECT_TIMEOUT: 10s
+      OPENAI_READ_TIMEOUT: 100s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    image: "${IMAGE_PREFIX}/frontend:${IMAGE_TAG:-latest}"
+    container_name: smart-credit-frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
