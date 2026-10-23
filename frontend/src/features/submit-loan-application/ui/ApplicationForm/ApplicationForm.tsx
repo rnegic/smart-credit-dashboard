@@ -74,16 +74,6 @@ const registrationSchema = applicationApplicantSubmissionSchema.pick({
   phone: true,
   email: true,
 })
-// The API fills registry metadata itself; absent dates must not block the editor.
-const submissionSchema = applicationFormSubmissionSchema.extend({
-  step2_businessData:
-    applicationFormSubmissionSchema.shape.step2_businessData.extend({
-      applicant: applicationApplicantSubmissionSchema.extend({
-        registrationDate:
-          applicationApplicantSubmissionSchema.shape.registrationDate.nullable(),
-      }),
-    }),
-})
 const formSteps = [
   'Параметры финансирования',
   'Данные бизнеса',
@@ -577,7 +567,7 @@ function ApplicationFormEditor({
   })
 
   const submit = useMutation({
-    mutationFn: (body: z.infer<typeof submissionSchema>) =>
+    mutationFn: (body: z.infer<typeof applicationFormSubmissionSchema>) =>
       apiRequest('/api/applications', applicationViewSchema, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -755,7 +745,8 @@ function ApplicationFormEditor({
       })
       return
     }
-    const submission = submissionSchema.safeParse(buildSubmission())
+    const submission =
+      applicationFormSubmissionSchema.safeParse(buildSubmission())
     if (!submission.success) {
       setErrors({
         submission:

@@ -107,12 +107,14 @@ export const applicationApplicantSubmissionSchema =
       /^\d{15}$/,
       'ОГРНИП должен содержать 15 цифр',
     ),
+    // Registry metadata is supplied by the server; it may be absent on submission.
     registrationDate: z.iso
       .date({ error: 'Укажите дату регистрации в формате ДД.ММ.ГГГГ' })
       .refine(
         (value) => new Date(`${value}T00:00:00`) <= new Date(),
         'Дата регистрации не может быть в будущем',
-      ),
+      )
+      .nullable(),
     mainOkved: requiredText('Укажите основной ОКВЭД').regex(
       /^\d{2}(?:\.\d{1,2}){0,2}$/,
       'Укажите код ОКВЭД, например 47.11',
