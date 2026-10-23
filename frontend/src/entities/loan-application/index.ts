@@ -31,11 +31,16 @@ const scoringSchema = z.object({
   isDataComplete: z.boolean(),
   internalScore: internalScoreSchema,
   riskClass: riskClassSchema,
-  bkiZone: z.enum(['RED', 'YELLOW', 'GREEN']).nullable(),
+  bkiZone: z.null(),
   industryLimitCoef: z.number(),
   industryRatePremium: z.number(),
   absoluteMaxAmount: z.number(),
   calculatedLimit: z.number().nullable(),
+  external: z.null(),
+  points: z.null(),
+})
+const bankScoringSchema = scoringSchema.extend({
+  bkiZone: z.enum(['RED', 'YELLOW', 'GREEN']).nullable(),
   external: z
     .object({
       bkiScore: z.number().int(),
@@ -68,6 +73,7 @@ export const offerSchema = z.object({
   validUntil: z.iso.date(),
   status: z.enum(['ACTIVE', 'ACCEPTED', 'EXPIRED']),
 })
+/** Client responses explicitly null all bank-only fields. */
 export const applicationViewSchema = applicationSchema.extend({
   businessTask: z.string().nullable(),
   companyName: z.string(),
@@ -75,12 +81,27 @@ export const applicationViewSchema = applicationSchema.extend({
   legalForm: z.string().nullable(),
   internalScore: internalScoreSchema.nullable(),
   riskClass: riskClassSchema.nullable(),
-  aiComment: z.string().nullable(),
+  aiComment: z.null(),
+  recommendation: z.null(),
   officerComment: z.string().nullable(),
   scoring: scoringSchema.nullable(),
   offer: offerSchema.nullable(),
 })
 export const applicationViewsSchema = z.array(applicationViewSchema)
+/** Bank-only view with advisory recommendations separate from saved decisions. */
+export const bankApplicationViewSchema = applicationViewSchema.extend({
+  aiComment: z.string().nullable(),
+  recommendation: z
+    .object({
+      decision: applicationDecisionSchema,
+      finalRate: z.number().nullable(),
+      amount: z.number().nullable(),
+      reason: z.string(),
+    })
+    .nullable(),
+  scoring: bankScoringSchema.nullable(),
+})
+export const bankApplicationViewsSchema = z.array(bankApplicationViewSchema)
 export const createApplicationSchema = z.object({
   amount: z
     .number()
@@ -97,6 +118,7 @@ export const createApplicationSchema = z.object({
 })
 export type Application = z.infer<typeof applicationSchema>
 export type ApplicationView = z.infer<typeof applicationViewSchema>
+export type BankApplicationView = z.infer<typeof bankApplicationViewSchema>
 export type Offer = z.infer<typeof offerSchema>
 export const applicationStatusLabels = {
   IN_REVIEW: 'На рассмотрении',
