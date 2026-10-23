@@ -97,6 +97,8 @@ export function BankWorkspace() {
       !session.isError &&
       selectedId !== undefined,
     staleTime: 0,
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
     gcTime: 5 * 60_000,
     retry: false,
   })

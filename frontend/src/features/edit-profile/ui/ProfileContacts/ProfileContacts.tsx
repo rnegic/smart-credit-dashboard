@@ -170,14 +170,6 @@ function ProfileContactsEditor({
       >
         Контактные данные
       </Typography.TitleResponsive>
-      <dl className={styles.identity}>
-        <dt>ФИО</dt>
-        <dd>{profile.data.fullName}</dd>
-      </dl>
-      <p className={styles.hint} id={`${id}-hint`}>
-        Контакты подставляются в новые заявки. Поля необязательны: оставьте поле
-        пустым, чтобы удалить контакт.
-      </p>
       <Input
         id={`${id}-phone`}
         name="phone"
