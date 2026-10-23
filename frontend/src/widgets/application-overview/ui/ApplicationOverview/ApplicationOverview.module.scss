@@ -32,6 +32,95 @@
   block-size: var(--gap-16);
 }
 
+.statusLine {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--gap-12);
+}
+
+.offerCard {
+  border-color: var(--color-light-neutral-translucent-200);
+}
+
+.offerMain {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--gap-32);
+  padding: var(--gap-32);
+}
+
+.offerMain .heading {
+  justify-content: center;
+  align-self: start;
+  gap: var(--gap-20);
+  padding: var(--gap-24) var(--gap-0);
+}
+
+.offerMain .heading h2 {
+  max-inline-size: 14ch;
+  text-wrap: balance;
+}
+
+.offerSummary {
+  display: grid;
+  gap: var(--gap-24);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.offerAmount {
+  display: grid;
+  gap: var(--gap-12);
+  margin: var(--gap-0);
+  padding-block: var(--gap-24);
+  border-block-end: 1px solid var(--color-light-neutral-translucent-200);
+}
+
+.offerAmount dt,
+.offerDates dt {
+  color: var(--color-light-text-secondary);
+}
+
+.offerAmount dd {
+  margin: var(--gap-0);
+  font-family: var(--font-family-system);
+  font-size: clamp(var(--gap-32), 4.5cqi, var(--gap-56));
+  font-weight: 600;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.offerDates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-16) var(--gap-24);
+  margin: var(--gap-0);
+  padding-block-start: var(--gap-24);
+  border-block-start: 1px solid var(--color-light-neutral-translucent-100);
+}
+
+.offerProgress {
+  border-block-start: 1px solid var(--color-light-neutral-translucent-100);
+}
+
+.offerDates > div {
+  display: grid;
+  gap: var(--gap-8);
+}
+
+.offerDates dd {
+  margin: var(--gap-0);
+  font-variant-numeric: tabular-nums;
+}
+
+.offerSkeleton {
+  inline-size: min(100%, 24rem);
+  block-size: var(--gap-96);
+  border-radius: var(--border-radius-8);
+  background: var(--color-light-neutral-translucent-100);
+}
+
 .declined {
   background: var(--color-light-status-muted-negative);
 }
@@ -187,6 +276,27 @@
 
   .mobileSteps {
     display: flex;
+  }
+}
+
+@container (max-width: 47.99rem) {
+  .offerMain {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-24);
+    padding: var(--gap-24) var(--gap-20);
+  }
+
+  .offerMain .heading {
+    padding: var(--gap-0);
+  }
+
+  .offerMain .heading h2 {
+    max-inline-size: none;
+    text-wrap: initial;
+  }
+
+  .offerAmount dd {
+    font-size: clamp(var(--gap-32), 7cqi, var(--gap-48));
   }
 }
 

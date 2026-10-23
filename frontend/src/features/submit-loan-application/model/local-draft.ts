@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { useSyncExternalStore } from 'react'
 import {
+  applicationApplicantSubmissionSchema,
   applicationDraftPathsSchema,
   applicationFormSchema,
 } from '@/entities/application-form'
@@ -118,9 +119,14 @@ export function numberOrNull(value: string) {
   return Number.isFinite(number) ? number : null
 }
 
+/** Preserve valid stored dates; missing or invalid legacy input stays absent. */
 export function registrationDateValue(value: string) {
   const text = value.trim()
   if (!text) return null
   const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(text)
-  return match ? `${match[3]}-${match[2]}-${match[1]}` : text
+  const result =
+    applicationApplicantSubmissionSchema.shape.registrationDate.safeParse(
+      match ? `${match[3]}-${match[2]}-${match[1]}` : text,
+    )
+  return result.success ? result.data : null
 }

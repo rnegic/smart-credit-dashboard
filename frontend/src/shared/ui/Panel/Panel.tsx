@@ -27,10 +27,13 @@ export function Panel({
   return (
     <SidePanel
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (dismissible) onClose()
+      }}
       className={styles.panel}
       scrollLock
       disableEscapeKeyDown={!dismissible}
+      disableBackdropClick={!dismissible}
       onUnmount={() => {
         if (returnFocusRef)
           requestAnimationFrame(() => {
