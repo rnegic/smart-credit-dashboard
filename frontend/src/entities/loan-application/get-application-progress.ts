@@ -3,7 +3,7 @@ import type { Application } from './index'
 const stages = [
   { code: 'SUBMITTED', title: 'Заявка' },
   { code: 'REVIEW', title: 'Проверка' },
-  { code: 'DECISION', title: 'Решение' },
+  { code: 'DECISION', title: 'Статус' },
   { code: 'OFFER', title: 'Предложение' },
   { code: 'SIGNING', title: 'Подписание' },
   { code: 'ISSUED', title: 'Выдача' },
@@ -22,14 +22,14 @@ export function getApplicationProgress(
 ): ApplicationProgressStage[] {
   const currentCode = {
     IN_REVIEW: 'REVIEW',
-    OFFER_READY: 'OFFER',
+    OFFER_READY: 'DECISION',
     ACCEPTED: 'ISSUED',
     DECLINED: 'DECISION',
   } as const
   const currentIndex = stages.findIndex(
     (stage) => stage.code === currentCode[status],
   )
-  // ACCEPTED confirms signing only; issuance remains current until a linked loan is available.
+  // OFFER_READY awaits client choice; ACCEPTED confirms signing, not issuance.
   return stages.map((stage, index) => ({
     ...stage,
     state:
