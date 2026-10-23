@@ -27,6 +27,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -255,15 +257,28 @@ public class ApplicationService {
                 : mapper.treeToValue(a.getScoringData(), ScoringService.Result.class);
         if (scoring != null && !forBank) scoring = scoring.forClient();
 
-        // рекомендация системы и ИИ-комментарий видит только сотрудник банка
         ApplicationView.Recommendation recommendation = !forBank || a.getRecommendation() == null ? null
                 : mapper.treeToValue(a.getRecommendation(), ApplicationView.Recommendation.class);
+
+        // Срок существования компании: считаем на текущий момент (now - registrationDate).
+        // Видит только сотрудник банка. Источник даты регистрации — ExternalDataService (мок ЕГРЮЛ/ЕГРИП),
+        // в проде заменяется на реальный вызов.
+        ApplicationView.CompanyAge companyAge = null;
+        if (forBank) {
+            LocalDate reg = ExternalDataService.registrationDate(c.getInn());
+            LocalDate today = LocalDate.now();
+            if (reg != null && !reg.isAfter(today)) {
+                Period p = Period.between(reg, today);
+                long totalDays = ChronoUnit.DAYS.between(reg, today);
+                companyAge = new ApplicationView.CompanyAge(reg, p.getYears(), p.getMonths(), p.getDays(), totalDays);
+            }
+        }
 
         return new ApplicationView(a.getId(), c.getName(), c.getInn(), c.getLegalForm(),
                 a.getAmount(), termDaysOf(a), a.getRate(), a.getPurpose(), a.getBusinessTask(),
                 a.getStatus().name(), a.getDecision() == null ? null : a.getDecision().name(), a.getFinalRate(),
                 a.getRiskScore(), a.getRiskClass(), forBank ? a.getAiComment() : null, a.getOfficerComment(),
-                a.getCreatedAt(), scoring, recommendation, offer);
+                a.getCreatedAt(), scoring, recommendation, offer, companyAge);
     }
     private BigDecimal offerAmount(Long applicationId) {
         return offerRepository.findFirstByApplicationIdOrderByIdDesc(applicationId)

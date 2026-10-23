@@ -23,11 +23,13 @@ public record ApplicationView(
         Instant createdAt,
         ScoringService.Result scoring,   // производные поля скоринга; для клиента без bkiZone/external/points
         Recommendation recommendation,   // рекомендация системы; только для сотрудника банка, клиенту null
-        OfferView offer) {
+        OfferView offer,
+        CompanyAge companyAge){
     /** Рекомендация DecisionEngine: что система предлагает сотруднику (не решение). */
     public record Recommendation(DecisionStatus decision, BigDecimal finalRate, BigDecimal amount, String reason) {}
 
     public record OfferView(Long id, BigDecimal amount, Integer termDays,
                             BigDecimal finalRate, BigDecimal monthlyPayment,
                             LocalDate validUntil, String status) {}
+    public record CompanyAge(LocalDate registrationDate, int years, int months, int days, long totalDays) {}
 }
