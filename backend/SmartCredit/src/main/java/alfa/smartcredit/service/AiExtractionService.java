@@ -23,8 +23,8 @@ import java.util.Set;
 @Slf4j
 public class AiExtractionService {
 
-    public record Extracted(String businessTask, BigDecimal amount, Integer termMonths, String purpose,
-                            BigDecimal monthlyRevenue, BigDecimal existingMonthlyDebtPayment,
+    public record Extracted(String businessTask, BigDecimal amount, Integer termDays, String purpose,
+                            BigDecimal monthlyRevenue, BigDecimal existingDebt,
                             String industry, String taxSystem) {}
 
     private static final String SYSTEM_PROMPT = """
@@ -33,15 +33,17 @@ public class AiExtractionService {
             Правила:
             - Ничего не выдумывай. Если значения в тексте нет, верни null.
             - Суммы в рублях числом: "3 млн" = 3000000, "500 тыс" = 500000, "полтора миллиона" = 1500000.
-            - Срок в месяцах: "2 года" = 24, "полгода" = 6.
+            - amount: от 50000 до 20000000, иначе null.
+            - termDays: срок транша в днях, допустимы только 30, 60 или 90 (\"месяц\" = 30, \"2 месяца\" = 60, \"3 месяца\" = 90).
+              Если срок не указан или не равен одному из этих значений, верни null.
             - businessTask: одна фраза, что нужно сделать на деньги (до 200 символов).
             - purpose: одно из "Оборотные средства", "Оборудование", "Ремонт", "Недвижимость", "Другое".
             - monthlyRevenue: выручка в месяц. Если дана годовая, раздели на 12.
-            - existingMonthlyDebtPayment: ежемесячные платежи по текущим кредитам; если сказано, что кредитов нет, верни 0.
+            - existingDebt: ежемесячные платежи по текущим кредитам; если сказано, что кредитов нет, верни 0.
             - industry: отрасль одним словом (например "IT", "Торговля", "Производство").
             - taxSystem: одно из "USN", "OSNO", "PSN", "AUSN" (УСН, ОСНО, патент, АУСН).
-            Верни только JSON-объект без Markdown с ключами businessTask, amount, termMonths,
-            purpose, monthlyRevenue, existingMonthlyDebtPayment, industry, taxSystem.
+            Верни только JSON-объект без Markdown с ключами businessTask, amount, termDays,
+            purpose, monthlyRevenue, existingDebt, industry, taxSystem.
             Все ключи обязательны, неизвестные значения должны быть null.
             """;
 
@@ -73,10 +75,10 @@ public class AiExtractionService {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("businessTask", nullable("string"));
         props.put("amount", nullable("number"));
-        props.put("termMonths", nullable("integer"));
+        props.put("termDays", nullable("integer"));
         props.put("purpose", nullable("string"));
         props.put("monthlyRevenue", nullable("number"));
-        props.put("existingMonthlyDebtPayment", nullable("number"));
+        props.put("existingDebt", nullable("number"));
         props.put("industry", nullable("string"));
         props.put("taxSystem", nullable("string"));
 
@@ -129,11 +131,11 @@ public class AiExtractionService {
         String tax = str(n, "taxSystem", 10);
         return new Extracted(
                 str(n, "businessTask", 500),
-                num(n, "amount", 10_000),
-                integer(n, "termMonths", 1, 120),
+                num(n, "amount", 50_000, 20_000_000),
+                termDays(n),
                 str(n, "purpose", 100),
                 num(n, "monthlyRevenue", 1),
-                num(n, "existingMonthlyDebtPayment", 0),
+                num(n, "existingDebt", 0),
                 str(n, "industry", 100),
                 tax != null && TAX_SYSTEMS.contains(tax) ? tax : null);
     }
@@ -142,6 +144,15 @@ public class AiExtractionService {
     private BigDecimal num(JsonNode n, String f, double min) {
         JsonNode v = n.path(f);
         return v.isNumber() && v.asDouble() >= min ? v.decimalValue() : null;
+    }
+    private BigDecimal num(JsonNode n, String f, double min, double max) {
+        BigDecimal v = num(n, f, min);
+        return v != null && v.doubleValue() <= max ? v : null;
+    }
+    /** Срок транша: только 30, 60 или 90 дней. */
+    private Integer termDays(JsonNode n) {
+        Integer v = integer(n, "termDays", 1, 3650);
+        return v != null && ProductRules.TERM_DAYS.contains(v) ? v : null;
     }
     private Integer integer(JsonNode n, String f, int min, int max) {
         JsonNode v = n.path(f);

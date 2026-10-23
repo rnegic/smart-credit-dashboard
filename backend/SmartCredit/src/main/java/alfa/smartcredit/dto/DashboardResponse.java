@@ -17,15 +17,16 @@ public record DashboardResponse(
 ) {
     public record CompanyDto(Long id, String name, String inn, String okved, String legalForm) {}
 
-    public record ApplicationDto(Long id, BigDecimal amount, Integer termMonths,
-                                 String purpose, String status, Instant createdAt) {}
+    public record ApplicationDto(Long id, BigDecimal amount, Integer termDays, BigDecimal rate,
+                                 String purpose, String status, String decision, BigDecimal finalRate,
+                                 Instant createdAt) {}
 
     public record StageDto(String code, String title, String state) {}
 
     public record ActionDto(String code, String title) {}
 
-    public record OfferDto(Long id, BigDecimal amount, Integer termMonths,
-                           BigDecimal ratePercent, BigDecimal monthlyPayment, LocalDate validUntil) {}
+    public record OfferDto(Long id, BigDecimal amount, Integer termDays,
+                           BigDecimal finalRate, BigDecimal monthlyPayment, LocalDate validUntil) {}
 
     public record LoanDto(Long id, BigDecimal principal, BigDecimal ratePercent, Integer termMonths,
                           BigDecimal monthlyPayment, BigDecimal remainingBalance, LocalDate startDate) {}

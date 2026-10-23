@@ -1,6 +1,7 @@
 package alfa.smartcredit.model;
 
 import alfa.smartcredit.model.enums.ApplicationStatus;
+import alfa.smartcredit.model.enums.DecisionStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -37,6 +38,16 @@ public class CreditApplication {
     @Column(name = "officer_comment")
     private String officerComment;
     @Column(name = "business_task") private String businessTask;
+
+    @Column(name = "term_days") private Integer termDays;               // 30 | 60 | 90
+    private BigDecimal rate;                                            // базовая ставка по сроку
+    @Column(name = "final_rate") private BigDecimal finalRate;          // итоговая ставка (DecisionEngine)
+    @Enumerated(EnumType.STRING) private DecisionStatus decision;       // решение DecisionEngine
+    @Column(name = "calculated_limit") private BigDecimal calculatedLimit;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "scoring_data")
+    private JsonNode scoringData;                                       // снимок скоринга
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "form_data")

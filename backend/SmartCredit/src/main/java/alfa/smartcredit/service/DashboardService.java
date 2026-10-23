@@ -39,7 +39,7 @@ public class DashboardService {
 
         List<DashboardResponse.OfferDto> offers = offerRepository
                 .findByCompanyIdAndStatus(companyId, OfferStatus.ACTIVE).stream()
-                .map(o -> new DashboardResponse.OfferDto(o.getId(), o.getAmount(), o.getTermMonths(),
+                .map(o -> new DashboardResponse.OfferDto(o.getId(), o.getAmount(), termDays(o.getTermDays(), o.getTermMonths()),
                         o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil()))
                 .toList();
 
@@ -51,7 +51,9 @@ public class DashboardService {
                 new DashboardResponse.CompanyDto(company.getId(), company.getName(),
                         company.getInn(), company.getOkved(), company.getLegalForm()),
                 app == null ? null : new DashboardResponse.ApplicationDto(app.getId(), app.getAmount(),
-                        app.getTermMonths(), app.getPurpose(), app.getStatus().name(), app.getCreatedAt()),
+                        termDays(app.getTermDays(), app.getTermMonths()), app.getRate(), app.getPurpose(),
+                        app.getStatus().name(), app.getDecision() == null ? null : app.getDecision().name(),
+                        app.getFinalRate(), app.getCreatedAt()),
                 buildStages(app),
                 buildActions(app),
                 offers,
@@ -61,6 +63,11 @@ public class DashboardService {
                 next == null ? null : new DashboardResponse.PaymentDto(next.getId(), next.getDueDate(), next.getAmount()),
                 notificationRepository.countByCompanyIdAndReadFalse(companyId)
         );
+    }
+
+    /** Для старых строк без term_days: приблизительно месяцы * 30. */
+    private static Integer termDays(Integer termDays, Integer termMonths) {
+        return termDays != null ? termDays : (termMonths == null ? null : termMonths * 30);
     }
 
     private List<DashboardResponse.StageDto> buildStages(CreditApplication app) {
