@@ -191,3 +191,96 @@ export async function apiEmpty(
   const { generation, signal } = await request(path, options)
   assertRequest(generation, signal, options?.signal)
 }
+
+/** Named SSE events share the HTTP client's origin, cookies and session fence. */
+export interface ApiEventStreamOptions {
+  events: Record<string, (data: string) => void>
+  onError: (error: ApiError) => void
+  signal?: AbortSignal
+}
+
+/** Subscribe until disposal or a session change; reconnect closed transports. */
+export function apiEventStream(path: string, options: ApiEventStreamOptions) {
+  syncSessionChanges()
+  const generation = getSessionGeneration()
+  const signal = AbortSignal.any([
+    getSessionSignal(),
+    ...(options.signal ? [options.signal] : []),
+  ])
+  let source: EventSource | null = null
+  let retry: ReturnType<typeof setTimeout> | undefined
+  let retryDelay = 3_000
+  let disposed = false
+
+  function close() {
+    disposed = true
+    clearTimeout(retry)
+    source?.close()
+    source = null
+    signal.removeEventListener('abort', close)
+  }
+
+  function isCurrent() {
+    syncSessionChanges()
+    if (
+      signal.aborted ||
+      generation !== getSessionGeneration() ||
+      isSessionSwitching()
+    )
+      close()
+    return !disposed
+  }
+
+  function reconnect() {
+    if (!isCurrent()) return
+    clearTimeout(retry)
+    retry = setTimeout(connect, retryDelay)
+    retryDelay = Math.min(retryDelay * 2, 30_000)
+  }
+
+  function connect() {
+    if (!isCurrent()) return
+    try {
+      const connection = new EventSource(`${baseUrl}${path}`, {
+        withCredentials: true,
+      })
+      source = connection
+      connection.addEventListener('open', () => {
+        if (isCurrent() && source === connection) retryDelay = 3_000
+      })
+      for (const [name, handle] of Object.entries(options.events)) {
+        connection.addEventListener(name, (event) => {
+          if (!isCurrent() || source !== connection) return
+          const data: unknown = (event as MessageEvent<unknown>).data
+          if (typeof data === 'string') handle(data)
+          else
+            options.onError(
+              new ApiError(200, 'INVALID_RESPONSE', 'Не удалось прочитать событие сервера.'),
+            )
+        })
+      }
+      connection.addEventListener('error', () => {
+        if (!isCurrent() || source !== connection) return
+        options.onError(
+          new ApiError(0, 'STREAM_DISCONNECTED', 'Соединение прервано. Повторяем подключение.'),
+        )
+        // CONNECTING retries natively; HTTP failures may leave EventSource CLOSED.
+        if (connection.readyState === EventSource.CLOSED) {
+          connection.close()
+          source = null
+          reconnect()
+        }
+      })
+    } catch {
+      if (!isCurrent()) return
+      options.onError(
+        new ApiError(0, 'STREAM_DISCONNECTED', 'Не удалось подключиться к потоку событий.'),
+      )
+      reconnect()
+    }
+  }
+
+  signal.addEventListener('abort', close, { once: true })
+  connect()
+  return close
+}
