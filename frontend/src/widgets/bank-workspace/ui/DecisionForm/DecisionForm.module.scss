@@ -60,3 +60,35 @@
 .error {
   color: var(--color-light-status-negative);
 }
+
+.product {
+  display: grid;
+  gap: var(--gap-16);
+  min-inline-size: 0;
+  padding: var(--gap-20);
+  border-radius: var(--border-radius-16);
+  background: var(--color-light-base-bg-secondary);
+}
+
+.product h3,
+.product dl,
+.product dd {
+  margin: var(--gap-0);
+}
+
+.product dl {
+  display: grid;
+  gap: var(--gap-12);
+}
+
+.product dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--gap-8) var(--gap-16);
+}
+
+.product dd {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

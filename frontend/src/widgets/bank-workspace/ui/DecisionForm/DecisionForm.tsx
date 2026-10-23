@@ -3,19 +3,22 @@ import { Button } from '@alfalab/core-components/button'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Textarea } from '@alfalab/core-components/textarea'
+import type { ApplicationView } from '@/entities/loan-application'
+import { formatMoney } from '@/shared/lib'
 import { decisionSchema, type Decision } from '../../model/decision'
 import styles from './DecisionForm.module.scss'
 
 /** Officer decision state and the validated submission callback. */
 export interface DecisionFormProps {
+  application: ApplicationView
   disabled: boolean
   pending: boolean
   onSubmit: (decision: Decision) => void
 }
 
 const actions = [
-  { value: 'APPROVE', label: 'Одобрить запрошенные условия' },
-  { value: 'OFFER_ALTERNATIVE', label: 'Предложить другие условия' },
+  { value: 'APPROVE', label: 'Предложить новые условия' },
+  { value: 'OFFER_ALTERNATIVE', label: 'Указать условия вручную' },
   { value: 'DECLINE', label: 'Отказать' },
 ] as const
 
@@ -28,6 +31,7 @@ type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'finalRate'
 
 /** Validates manual decisions without calculating offer terms in the browser. */
 export function DecisionForm({
+  application,
   disabled,
   pending,
   onSubmit,
@@ -118,10 +122,44 @@ export function DecisionForm({
       </fieldset>
 
       {action === 'APPROVE' && (
-        <p className={styles.note}>
-          Сумма и срок останутся запрошенными. Ставку и платёж рассчитает сервер
-          по правилам продукта.
-        </p>
+        <section
+          className={styles.product}
+          aria-label="Предложение по параметрам заявки"
+        >
+          <h3>Краткосрочное финансирование</h3>
+          <dl>
+            <div>
+              <dt>Сумма предложения</dt>
+              <dd>{formatMoney(application.amount)}</dd>
+            </div>
+            <div>
+              <dt>Срок</dt>
+              <dd>{application.termDays} дней</dd>
+            </div>
+            <div>
+              <dt>Базовая ставка продукта</dt>
+              <dd>
+                {application.rate == null
+                  ? 'Не передана сервером'
+                  : `${application.rate}% годовых`}
+              </dd>
+            </div>
+            <div>
+              <dt>Расчётный платёж в скоринге</dt>
+              <dd>
+                {application.scoring?.newMonthlyPayment == null
+                  ? 'Расчёт не передан'
+                  : formatMoney(application.scoring.newMonthlyPayment)}
+              </dd>
+            </div>
+          </dl>
+          <p className={styles.note}>
+            Сумма и срок соответствуют заявке. Итоговую ставку и платёж
+            рассчитает сервер при сохранении решения. Сейчас показаны базовые
+            параметры, а не окончательные условия подписания. Просмотр карточки
+            не отправляет предложение клиенту.
+          </p>
+        </section>
       )}
       {action === 'OFFER_ALTERNATIVE' && (
         <div className={styles.alternative}>
