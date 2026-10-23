@@ -11,11 +11,13 @@ import {
   applicationStatusLabels,
   getApplicationProgress,
   useApplications,
+  type Application,
   type ApplicationView,
 } from '@/entities/loan-application'
 import { AcceptOffer } from '@/features/accept-offer'
 import { ApplicationForm } from '@/features/submit-loan-application'
 import { ROUTES } from '@/shared/config'
+import { useApiScope } from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
 import { Panel } from '@/shared/ui'
 import styles from './ApplicationOverview.module.scss'
@@ -30,15 +32,27 @@ export function ApplicationOverview({
   application: providedApplication,
 }: ApplicationOverviewProps) {
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [selectedApplication, setSelectedApplication] =
+    useState<Application | null>(null)
   const detailsButtonRef = useRef<HTMLButtonElement>(null)
   const headingId = useId()
   const navigate = useNavigate()
   const dashboard = useDashboard()
   const applications = useApplications()
-  const application = providedApplication ?? dashboard.data?.currentApplication
+  const scope = useApiScope()
+  const currentApplication =
+    providedApplication ?? dashboard.data?.currentApplication
+  const applicationId =
+    detailsOpen && selectedApplication
+      ? selectedApplication.id
+      : currentApplication?.id
   const applicationView =
-    providedApplication ??
-    applications.data?.find((item) => item.id === application?.id)
+    (providedApplication?.id === applicationId
+      ? providedApplication
+      : undefined) ??
+    applications.data?.find((item) => item.id === applicationId)
+  const application =
+    applicationView ?? (detailsOpen ? selectedApplication : currentApplication)
   // Company-wide dashboard offers do not identify their application.
   const offer = applicationView?.offer
   const scoring = applicationView?.scoring
@@ -57,6 +71,7 @@ export function ApplicationOverview({
     application?.status === 'IN_REVIEW' || application?.status === 'OFFER_READY'
   const showLoan =
     !providedApplication &&
+    !detailsOpen &&
     loan != null &&
     (paymentIsUrgent || !hasPendingApplication)
   const offerIsValid =
@@ -71,6 +86,7 @@ export function ApplicationOverview({
 
   if (
     !providedApplication &&
+    !detailsOpen &&
     (dashboard.isPending || dashboard.isError || !dashboard.data)
   ) {
     return (
@@ -189,6 +205,7 @@ export function ApplicationOverview({
               onClick={() => {
                 void navigate(ROUTES.credits)
               }}
+              ref={detailsButtonRef}
             >
               К кредитам
             </Button>
@@ -262,41 +279,6 @@ export function ApplicationOverview({
       ))}
     </ol>
   )
-  const renderOfferParameters = (showRate: boolean) => offer && (
-    <dl className={styles.parameters}>
-      <div>
-        <dt>Предложенная сумма</dt>
-        <dd>{formatMoney(offer.amount)}</dd>
-      </div>
-      {offer.amount !== application.amount && (
-        <div>
-          <dt>Разница с запросом</dt>
-          <dd>
-            {offer.amount < application.amount ? 'Меньше на ' : 'Больше на '}
-            {formatMoney(Math.abs(offer.amount - application.amount))}
-          </dd>
-        </div>
-      )}
-      <div>
-        <dt>Предложенный срок</dt>
-        <dd>{offer.termDays} дней</dd>
-      </div>
-      {showRate && (
-        <div>
-          <dt>Итоговая ставка</dt>
-          <dd>{offer.finalRate}% годовых</dd>
-        </div>
-      )}
-      <div>
-        <dt>Ежемесячный платёж</dt>
-        <dd>{formatMoney(offer.monthlyPayment)}</dd>
-      </div>
-      <div>
-        <dt>Предложение действительно до</dt>
-        <dd>{formatDate(offer.validUntil)}</dd>
-      </div>
-    </dl>
-  )
   const statusMessage = {
     IN_REVIEW: {
       title: 'Заявка на рассмотрении у кредитного специалиста',
@@ -312,8 +294,8 @@ export function ApplicationOverview({
           ? 'Банк предложил другие условия'
           : 'Банк подготовил предложение',
       description: canAcceptOffer
-        ? 'Ожидаем вашего выбора. Сравните запрошенные и предложенные условия. Выберите предложение банка в подробностях заявки, затем подтвердите подписание.'
-        : 'Принятие предложения недоступно. Проверьте его условия и статус в подробностях заявки.',
+        ? 'Ожидаем вашего выбора. Рассмотрите условия предложения перед подписанием.'
+        : 'Принятие предложения недоступно. Проверьте его условия и статус.',
     },
     DECLINED: {
       title: 'В заявке отказано',
@@ -328,8 +310,8 @@ export function ApplicationOverview({
               : 'Причина отказа не указана.',
     },
     ACCEPTED: {
-      title: 'Предложение принято',
-      description: 'Ожидаем подтверждения выдачи. Деньги еще не зачислены.',
+      title: 'Условия приняты',
+      description: 'Ожидаем подтверждения выдачи. Деньги ещё не зачислены.',
     },
   }[application.status]
   const offerState =
@@ -338,7 +320,7 @@ export function ApplicationOverview({
       : !providedApplication && applications.isPending
         ? 'Загружаем условия предложения…'
         : !offer
-          ? 'Предложение для этой заявки пока недоступно.'
+          ? 'Условия предложения пока недоступны'
           : offer.status === 'EXPIRED' ||
               (offer.status === 'ACTIVE' && !offerIsValid)
             ? 'Срок действия предложения истёк. Подписание недоступно.'
@@ -348,78 +330,278 @@ export function ApplicationOverview({
                 ? 'Статус заявки обновляется. Подписание пока недоступно.'
                 : null
 
+  const offerExperience =
+    awaitingClientChoice ||
+    application.status === 'ACCEPTED' ||
+    (detailsOpen &&
+      (selectedApplication?.status === 'OFFER_READY' ||
+        selectedApplication?.status === 'ACCEPTED'))
+  const applicationDetails = (
+    <div className={styles.details}>
+      <Typography.TitleResponsive tag="h2" view="medium" font="system">
+        Запрошено: {formatMoney(application.amount)}
+      </Typography.TitleResponsive>
+      {!offerExperience && officerCommentNotice}
+      <dl className={styles.parameters}>
+        <div>
+          <dt>Дата создания заявки</dt>
+          <dd>
+            <time dateTime={application.createdAt}>
+              {formatDate(application.createdAt)}
+            </time>
+          </dd>
+        </div>
+        <div>
+          <dt>Цель</dt>
+          <dd>{application.purpose || 'Не указана'}</dd>
+        </div>
+        <div>
+          <dt>Запрошенный срок</dt>
+          <dd>{application.termDays} дней</dd>
+        </div>
+        <div>
+          <dt>Статус заявки</dt>
+          <dd>{applicationStatusLabels[application.status]}</dd>
+        </div>
+        <div>
+          <dt>Решение банка</dt>
+          <dd>
+            {application.decision
+              ? applicationDecisionLabels[application.decision]
+              : 'Не указано'}
+          </dd>
+        </div>
+        {applicationView && (
+          <>
+            <div>
+              <dt>Скоринговый балл</dt>
+              <dd>
+                {applicationView.internalScore == null
+                  ? 'Нет оценки'
+                  : `${applicationView.internalScore} / 100`}
+              </dd>
+            </div>
+            <div>
+              <dt>Класс риска</dt>
+              <dd>{applicationView.riskClass ?? 'Нет оценки'}</dd>
+            </div>
+          </>
+        )}
+      </dl>
+      {scoring && (
+        <>
+          <Typography.TitleResponsive tag="h3" view="small" font="system">
+            Показатели скоринга
+          </Typography.TitleResponsive>
+          <dl className={styles.parameters}>
+            <div>
+              <dt>Долговая нагрузка (DTI)</dt>
+              <dd>{scoring.dtiPercent}%</dd>
+            </div>
+            <div>
+              <dt>Сумма / годовая выручка</dt>
+              <dd>{scoring.amountToRevenue}</dd>
+            </div>
+            <div>
+              <dt>Расчётный платёж по заявке</dt>
+              <dd>
+                {scoring.newMonthlyPayment == null
+                  ? 'Нет расчёта'
+                  : formatMoney(scoring.newMonthlyPayment)}
+              </dd>
+            </div>
+            <div>
+              <dt>Расчётный лимит</dt>
+              <dd>
+                {scoring.calculatedLimit == null
+                  ? 'Нет расчёта'
+                  : formatMoney(scoring.calculatedLimit)}
+              </dd>
+            </div>
+          </dl>
+          <Typography.Text tag="p" color="secondary">
+            Скоринг рассчитан сервером для исходной заявки. Условия предложения
+            указаны отдельно.
+          </Typography.Text>
+        </>
+      )}
+      {progressDescription}
+      <div inert aria-hidden="true">
+        <Steps
+          activeStep={activeStep}
+          isMarkCompletedSteps={false}
+          checkIsStepPositive={(step) => stages[step - 1]?.state === 'DONE'}
+          checkIsStepError={checkIsStepError}
+          ordered
+          interactive={false}
+          isVerticalAlign
+        >
+          {steps}
+        </Steps>
+      </div>
+      <div className={styles.notice}>
+        <Typography.Text tag="p" view="primary-small">
+          {statusMessage.description}
+        </Typography.Text>
+      </div>
+      {application.status === 'DECLINED' &&
+        !providedApplication &&
+        applications.isError && (
+          <Button
+            view="secondary"
+            onClick={() => {
+              void applications.refetch()
+            }}
+          >
+            Повторить загрузку комментария
+          </Button>
+        )}
+    </div>
+  )
+
   return (
     <>
-      <section className={styles.card} aria-labelledby={headingId}>
+      <section
+        className={`${styles.card} ${awaitingClientChoice ? styles.offerCard : ''}`}
+        aria-labelledby={headingId}
+      >
         <div className={styles.topline}>
-          <span
-            className={`${styles.status}${
-              declined
-                ? ` ${styles.declined}`
-                : awaitingClientChoice
-                  ? ` ${styles.warning}`
-                  : ''
-            }`}
-          >
-            {application.status === 'IN_REVIEW' && (
-              <ClockMIcon aria-hidden="true" />
+          <div className={styles.statusLine}>
+            <span
+              className={`${styles.status}${
+                declined
+                  ? ` ${styles.declined}`
+                  : awaitingClientChoice
+                    ? ` ${styles.warning}`
+                    : ''
+              }`}
+            >
+              {application.status === 'IN_REVIEW' && (
+                <ClockMIcon aria-hidden="true" />
+              )}
+              <Typography.Text view="primary-small" weight="medium">
+                {awaitingClientChoice
+                  ? 'Предложение готово'
+                  : applicationStatusLabels[application.status]}
+              </Typography.Text>
+            </span>
+            {awaitingClientChoice && (
+              <Typography.Text view="primary-small" color="secondary">
+                Ждёт вашего решения
+              </Typography.Text>
             )}
-            <Typography.Text view="primary-small" weight="medium">
-              {applicationStatusLabels[application.status]}
-            </Typography.Text>
-          </span>
+          </div>
           <Typography.Text view="secondary-large" color="secondary">
             № {application.id}
           </Typography.Text>
         </div>
-        <div className={styles.heading}>
-          <Typography.TitleResponsive
-            id={headingId}
-            tag="h2"
-            view="large"
-            font="system"
-            weight="bold"
-          >
-            {application.status === 'OFFER_READY'
-              ? 'Запрошено: '
-              : 'Заявка на '}
-            <span className={styles.amount}>
-              {formatMoney(application.amount)}
-            </span>
-          </Typography.TitleResponsive>
-          <Typography.Text tag="p" color="secondary">
-            Дата создания заявки:{' '}
-            <time dateTime={application.createdAt}>
-              {formatDate(application.createdAt)}
-            </time>
-          </Typography.Text>
-          <Typography.Text tag="p" color="secondary">
-            Запрошенный срок: {application.termDays} дней
-            {application.purpose && ` · ${application.purpose}`}
-          </Typography.Text>
-          {officerCommentNotice}
-        </div>
-
-        {application.status === 'OFFER_READY' && (
-          <div className={styles.progress}>
-            {renderOfferParameters(false)}
-            {offerState && (
-              <Typography.Text
-                tag="p"
-                view="primary-small"
-                color="secondary"
-                role={
-                  !providedApplication && applications.isError
-                    ? 'alert'
-                    : 'status'
-                }
-              >
-                {offerState}
+        <div className={awaitingClientChoice ? styles.offerMain : undefined}>
+          <div className={styles.heading}>
+            <Typography.TitleResponsive
+              id={headingId}
+              tag="h2"
+              view="large"
+              font="system"
+              weight="bold"
+            >
+              {awaitingClientChoice ? (
+                'Ваш следующий шаг для бизнеса'
+              ) : (
+                <>
+                  Заявка на{' '}
+                  <span className={styles.amount}>
+                    {formatMoney(application.amount)}
+                  </span>
+                </>
+              )}
+            </Typography.TitleResponsive>
+            {awaitingClientChoice ? (
+              <Typography.Text tag="p" color="secondary">
+                Цель: {application.purpose || 'Не указана'}
               </Typography.Text>
+            ) : (
+              <>
+                <Typography.Text tag="p" color="secondary">
+                  Дата создания заявки:{' '}
+                  <time dateTime={application.createdAt}>
+                    {formatDate(application.createdAt)}
+                  </time>
+                </Typography.Text>
+                <Typography.Text tag="p" color="secondary">
+                  Запрошенный срок: {application.termDays} дней
+                  {application.purpose && ` · ${application.purpose}`}
+                </Typography.Text>
+                {officerCommentNotice}
+              </>
             )}
           </div>
-        )}
-        <div className={styles.progress} aria-label="Этапы заявки">
+
+          {awaitingClientChoice && (
+            <div className={styles.offerSummary}>
+              {offer && (
+                <dl className={styles.offerAmount}>
+                  <dt>Банк предлагает</dt>
+                  <dd>{formatMoney(offer.amount, { exact: true })}</dd>
+                </dl>
+              )}
+              {!offer && !providedApplication && applications.isPending && (
+                <div className={styles.offerSkeleton} aria-hidden="true" />
+              )}
+              {offer && (
+                <Typography.Text tag="p" color="secondary">
+                  {offer.amount !== application.amount &&
+                  offer.termDays !== application.termDays
+                    ? 'Сумма и срок отличаются от заявки. Сравнение доступно в предложении.'
+                    : offer.amount !== application.amount
+                      ? 'Сумма отличается от заявки. Сравнение доступно в предложении.'
+                      : offer.termDays !== application.termDays
+                        ? 'Срок отличается от заявки. Сравнение доступно в предложении.'
+                        : application.decision === 'ALTERNATIVE_OFFER'
+                          ? 'Банк предложил другие условия. Сумма и срок сохранены.'
+                          : 'Сумма и срок соответствуют заявке'}
+                </Typography.Text>
+              )}
+              {offerState && (
+                <Typography.Text
+                  tag="p"
+                  view="primary-small"
+                  color="secondary"
+                  role={
+                    !providedApplication && applications.isError
+                      ? 'alert'
+                      : 'status'
+                  }
+                >
+                  {offerState}
+                </Typography.Text>
+              )}
+              <dl className={styles.offerDates}>
+                <div>
+                  <dt>Заявка создана</dt>
+                  <dd>
+                    <time dateTime={application.createdAt}>
+                      {formatDate(application.createdAt)}
+                    </time>
+                  </dd>
+                </div>
+                {offer && (
+                  <div>
+                    <dt>Предложение действует до</dt>
+                    <dd>
+                      <time dateTime={offer.validUntil}>
+                        {formatDate(offer.validUntil)}
+                      </time>
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+        </div>
+        <div
+          className={`${styles.progress} ${awaitingClientChoice ? styles.offerProgress : ''}`}
+          aria-label="Этапы заявки"
+        >
           {progressDescription}
           <div className={styles.desktopSteps} inert aria-hidden="true">
             <Steps
@@ -438,7 +620,9 @@ export function ApplicationOverview({
           <div className={styles.mobileSteps} inert aria-hidden="true">
             <Typography.Text view="secondary-medium" color="secondary">
               <span
-                className={awaitingClientChoice ? styles.pendingChoice : undefined}
+                className={
+                  awaitingClientChoice ? styles.pendingChoice : undefined
+                }
               >
                 {`Этап ${activeStep} из ${stages.length} · ${stages[activeStep - 1].title}${declined ? ' · Отказ' : awaitingClientChoice ? ' · Ожидает выбора' : ''}`}
               </span>
@@ -461,37 +645,60 @@ export function ApplicationOverview({
         </div>
 
         <div className={styles.bottomline}>
-          <div className={styles.nextStep}>
-            <div className={styles.nextStepText}>
-              <Typography.Text view="primary-small" weight="medium">
-                {statusMessage.title}
-              </Typography.Text>
-              <Typography.Text view="primary-small" color="secondary">
-                {statusMessage.description}
-              </Typography.Text>
+          {awaitingClientChoice ? (
+            <Typography.Text view="primary-small" color="secondary">
+              Рассмотрите условия и решите без спешки.
+            </Typography.Text>
+          ) : (
+            <div className={styles.nextStep}>
+              <div className={styles.nextStepText}>
+                <Typography.Text view="primary-small" weight="medium">
+                  {statusMessage.title}
+                </Typography.Text>
+                <Typography.Text view="primary-small" color="secondary">
+                  {statusMessage.description}
+                </Typography.Text>
+              </div>
             </div>
-          </div>
+          )}
           <Button
             view="primary"
             size={48}
             className={styles.detailsButton}
             rightAddons={<ArrowRightMIcon aria-hidden="true" />}
-            onClick={() => setDetailsOpen(true)}
+            onClick={() => {
+              setSelectedApplication(application)
+              setDetailsOpen(true)
+            }}
             ref={detailsButtonRef}
           >
-            Подробнее о заявке
+            {awaitingClientChoice
+              ? 'Посмотреть предложение'
+              : 'Подробнее о заявке'}
           </Button>
         </div>
       </section>
       {!providedApplication && <ApplicationForm resumeOnly />}
 
-      <Panel
-        open={detailsOpen}
-        returnFocusRef={detailsButtonRef}
-        title={`Заявка № ${application.id}`}
-        onClose={() => setDetailsOpen(false)}
-        footer={
-          application.status !== 'OFFER_READY' ? (
+      {offerExperience ? (
+        <AcceptOffer
+          key={`${scope}-${application.id}`}
+          open={detailsOpen}
+          application={application}
+          offer={offer}
+          officerComment={officerComment}
+          returnFocusRef={detailsButtonRef}
+          onClose={() => setDetailsOpen(false)}
+        >
+          {applicationDetails}
+        </AcceptOffer>
+      ) : (
+        <Panel
+          open={detailsOpen}
+          returnFocusRef={detailsButtonRef}
+          title={`Заявка № ${application.id}`}
+          onClose={() => setDetailsOpen(false)}
+          footer={
             <Button
               view="secondary"
               block
@@ -502,181 +709,11 @@ export function ApplicationOverview({
             >
               Документы по заявке
             </Button>
-          ) : undefined
-        }
-      >
-        <div className={styles.details}>
-          <Typography.TitleResponsive tag="h2" view="medium" font="system">
-            Запрошено: {formatMoney(application.amount)}
-          </Typography.TitleResponsive>
-          {officerCommentNotice}
-          <dl className={styles.parameters}>
-            <div>
-              <dt>Дата создания заявки</dt>
-              <dd>
-                <time dateTime={application.createdAt}>
-                  {formatDate(application.createdAt)}
-                </time>
-              </dd>
-            </div>
-            <div>
-              <dt>Цель</dt>
-              <dd>{application.purpose || 'Не указана'}</dd>
-            </div>
-            <div>
-              <dt>Запрошенный срок</dt>
-              <dd>{application.termDays} дней</dd>
-            </div>
-            {application.status === 'ACCEPTED' && offer && (
-              <div>
-                <dt>Итоговая ставка</dt>
-                <dd>{offer.finalRate}% годовых</dd>
-              </div>
-            )}
-            <div>
-              <dt>Статус заявки</dt>
-              <dd>{applicationStatusLabels[application.status]}</dd>
-            </div>
-            <div>
-              <dt>Решение банка</dt>
-              <dd>
-                {application.decision
-                  ? applicationDecisionLabels[application.decision]
-                  : 'Не указано'}
-              </dd>
-            </div>
-            {applicationView && (
-              <>
-                <div>
-                  <dt>Скоринговый балл</dt>
-                  <dd>
-                    {applicationView.internalScore == null
-                      ? 'Нет оценки'
-                      : `${applicationView.internalScore} / 100`}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Класс риска</dt>
-                  <dd>{applicationView.riskClass ?? 'Нет оценки'}</dd>
-                </div>
-              </>
-            )}
-          </dl>
-          {scoring && (
-            <>
-              <Typography.TitleResponsive tag="h3" view="small" font="system">
-                Показатели скоринга
-              </Typography.TitleResponsive>
-              <dl className={styles.parameters}>
-                <div>
-                  <dt>Долговая нагрузка (DTI)</dt>
-                  <dd>{scoring.dtiPercent}%</dd>
-                </div>
-                <div>
-                  <dt>Сумма / годовая выручка</dt>
-                  <dd>{scoring.amountToRevenue}</dd>
-                </div>
-                <div>
-                  <dt>Расчётный платёж по заявке</dt>
-                  <dd>
-                    {scoring.newMonthlyPayment == null
-                      ? 'Нет расчёта'
-                      : formatMoney(scoring.newMonthlyPayment)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Расчётный лимит</dt>
-                  <dd>
-                    {scoring.calculatedLimit == null
-                      ? 'Нет расчёта'
-                      : formatMoney(scoring.calculatedLimit)}
-                  </dd>
-                </div>
-              </dl>
-              <Typography.Text tag="p" color="secondary">
-                Скоринг рассчитан сервером для исходной заявки.
-                Условия предложения указаны отдельно.
-              </Typography.Text>
-            </>
-          )}
-          {progressDescription}
-          <div inert aria-hidden="true">
-            <Steps
-              activeStep={activeStep}
-              isMarkCompletedSteps={false}
-              checkIsStepPositive={(step) => stages[step - 1]?.state === 'DONE'}
-              checkIsStepError={checkIsStepError}
-              ordered
-              interactive={false}
-              isVerticalAlign
-            >
-              {steps}
-            </Steps>
-          </div>
-          <div className={styles.notice}>
-            <Typography.Text tag="p" view="primary-small">
-              {statusMessage.description}
-            </Typography.Text>
-          </div>
-          {application.status === 'DECLINED' &&
-            !providedApplication &&
-            applications.isError && (
-              <Button
-                view="secondary"
-                onClick={() => {
-                  void applications.refetch()
-                }}
-              >
-                Повторить загрузку комментария
-              </Button>
-            )}
-          {application.status === 'OFFER_READY' && (
-            <>
-              <Typography.TitleResponsive tag="h3" view="small" font="system">
-                Предложение банка
-              </Typography.TitleResponsive>
-              {renderOfferParameters(true)}
-              {offer && offer.termDays !== application.termDays && (
-                <Typography.Text tag="p" color="secondary">
-                  Срок изменен с {application.termDays} до {offer.termDays}{' '}
-                  дней. Платеж по новым условиям указан выше. Полная стоимость
-                  кредита не указана.
-                </Typography.Text>
-              )}
-              {offerState && (
-                <Typography.Text
-                  tag="p"
-                  color="secondary"
-                  role={
-                    !providedApplication && applications.isError
-                      ? 'alert'
-                      : 'status'
-                  }
-                >
-                  {offerState}
-                </Typography.Text>
-              )}
-              {!providedApplication && applications.isError && (
-                <Button
-                  view="secondary"
-                  onClick={() => {
-                    void applications.refetch()
-                  }}
-                >
-                  Повторить загрузку условий
-                </Button>
-              )}
-              {detailsOpen && canAcceptOffer && offer && (
-                <AcceptOffer
-                  key={`${application.id}-${offer.id}`}
-                  offer={offer}
-                  application={application}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </Panel>
+          }
+        >
+          {applicationDetails}
+        </Panel>
+      )}
     </>
   )
 }
