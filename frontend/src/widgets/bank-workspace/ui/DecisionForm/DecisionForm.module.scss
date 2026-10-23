@@ -1,14 +1,20 @@
 .form,
-.alternative {
+.alternative,
+.product,
+.confirmation,
+.submit {
   display: grid;
-  gap: var(--gap-20);
+  gap: var(--gap-16);
   min-inline-size: 0;
 }
 
 .form {
-  padding-block-start: var(--gap-24);
+  gap: var(--gap-20);
+  padding-block-start: var(--gap-20);
   border-block-start: calc(var(--gap-2) / 2) solid
-    var(--color-light-neutral-translucent-100);
+    var(--color-light-neutral-translucent-200);
+  font-size: var(--gap-16);
+  line-height: var(--gap-24);
 }
 
 .choices {
@@ -22,35 +28,108 @@
 
 .legend {
   padding: var(--gap-0);
-  margin-block-end: var(--gap-12);
+  margin-block-end: var(--gap-8);
   font-size: var(--gap-20);
+  line-height: var(--gap-24);
+  font-weight: 600;
+}
+
+.choiceList {
+  border: calc(var(--gap-2) / 2) solid
+    var(--color-light-neutral-translucent-200);
+  border-radius: var(--border-radius-4);
+  overflow: hidden;
 }
 
 .choice {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: var(--gap-16) var(--gap-24) minmax(0, 1fr);
+  align-items: center;
   gap: var(--gap-12);
-  padding: var(--gap-16);
-  border-radius: var(--border-radius-12);
-  background: var(--color-light-base-bg-secondary);
+  min-block-size: var(--size-s-height);
+  padding: var(--gap-10) var(--gap-12);
+  color: var(--color-light-text-primary);
   overflow-wrap: anywhere;
   cursor: pointer;
 }
 
+.choice + .choice {
+  border-block-start: calc(var(--gap-2) / 2) solid
+    var(--color-light-neutral-translucent-100);
+}
+
+.choices:not(:disabled) .choice:hover {
+  background: var(--color-light-neutral-translucent-100-hover);
+}
+
+.choice:has(input:checked) {
+  background: var(--color-light-neutral-translucent-200);
+}
+
+.choice:has(input:focus-visible) {
+  outline: var(--gap-2) solid var(--focus-color);
+  outline-offset: var(--gap-2-neg);
+}
+
 .choice input {
-  flex-shrink: 0;
-  margin: var(--gap-4) var(--gap-0) var(--gap-0);
+  inline-size: var(--gap-16);
+  block-size: var(--gap-16);
+  margin: var(--gap-0);
   accent-color: var(--color-light-text-primary);
+  cursor: inherit;
+}
+
+.choiceIcon {
+  inline-size: var(--gap-24);
+  block-size: var(--gap-24);
+}
+
+.choice input[value='APPROVE'] + .choiceIcon {
+  color: var(--color-light-status-positive-press);
+}
+
+.choice input[value='OFFER_ALTERNATIVE'] + .choiceIcon {
+  color: var(--color-light-status-info-press);
+}
+
+.choice input[value='DECLINE'] + .choiceIcon {
+  color: var(--color-light-status-negative-press);
+}
+
+.choice input:disabled + .choiceIcon,
+.choices:disabled .choice {
+  color: var(--color-light-text-tertiary);
 }
 
 .choices:disabled .choice {
   cursor: var(--disabled-cursor);
 }
 
+.alternative,
+.product,
+.confirmation {
+  padding-block-start: var(--gap-16);
+  border-block-start: calc(var(--gap-2) / 2) solid
+    var(--color-light-neutral-translucent-200);
+}
+
+.form .sectionTitle {
+  margin: var(--gap-0);
+  font-size: var(--gap-16);
+  line-height: var(--gap-24);
+  font-weight: 600;
+}
+
+.submit {
+  gap: var(--gap-8);
+}
+
 .note,
 .error,
 .warning {
   margin: var(--gap-0);
+  font-size: calc(var(--gap-12) + var(--gap-2));
+  line-height: var(--gap-20);
   overflow-wrap: anywhere;
 }
 
@@ -63,22 +142,12 @@
 }
 
 .warning {
-  padding: var(--gap-16);
-  border-radius: var(--border-radius-12);
+  padding: var(--gap-12);
+  border-inline-start: var(--gap-2) solid var(--color-light-status-attention);
   color: var(--color-light-text-primary);
   background: var(--color-light-status-muted-attention);
 }
 
-.product {
-  display: grid;
-  gap: var(--gap-16);
-  min-inline-size: 0;
-  padding: var(--gap-20);
-  border-radius: var(--border-radius-16);
-  background: var(--color-light-base-bg-secondary);
-}
-
-.product h3,
 .product dl,
 .product dd {
   margin: var(--gap-0);
@@ -86,17 +155,25 @@
 
 .product dl {
   display: grid;
-  gap: var(--gap-12);
 }
 
 .product dl > div {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--gap-8) var(--gap-16);
+  gap: var(--gap-4) var(--gap-16);
+  padding-block: var(--gap-8);
+  border-block-end: calc(var(--gap-2) / 2) solid
+    var(--color-light-neutral-translucent-100);
+}
+
+.product dt {
+  color: var(--color-light-text-secondary);
 }
 
 .product dd {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }

@@ -3,6 +3,9 @@ import { Button } from '@alfalab/core-components/button'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Textarea } from '@alfalab/core-components/textarea'
+import { ArrowsRightLeftMIcon } from '@alfalab/icons/glyph/dist/ArrowsRightLeftMIcon'
+import { CheckmarkMIcon } from '@alfalab/icons/glyph/dist/CheckmarkMIcon'
+import { CrossMIcon } from '@alfalab/icons/glyph/dist/CrossMIcon'
 import type { BankApplicationView } from '@/entities/loan-application'
 import { formatMoney } from '@/shared/lib'
 import { decisionSchema, type Decision } from '../../model/decision'
@@ -17,9 +20,17 @@ export interface DecisionFormProps {
 }
 
 const actions = [
-  { value: 'APPROVE', label: 'Одобрить запрошенные сумму и срок' },
-  { value: 'OFFER_ALTERNATIVE', label: 'Предложить другие условия' },
-  { value: 'DECLINE', label: 'Отказать' },
+  {
+    value: 'APPROVE',
+    label: 'Одобрить запрошенные сумму и срок',
+    Icon: CheckmarkMIcon,
+  },
+  {
+    value: 'OFFER_ALTERNATIVE',
+    label: 'Предложить другие условия',
+    Icon: ArrowsRightLeftMIcon,
+  },
+  { value: 'DECLINE', label: 'Отказать', Icon: CrossMIcon },
 ] as const
 
 const termOptions = [30, 60, 90].map((days) => ({
@@ -91,32 +102,43 @@ export function DecisionForm({
 
   return (
     <form ref={formRef} className={styles.form} onSubmit={submit} noValidate>
-      <fieldset className={styles.choices} disabled={disabled || pending}>
+      <fieldset
+        className={styles.choices}
+        disabled={disabled || pending}
+        aria-describedby={`${id}-action-note`}
+      >
         <legend className={styles.legend}>Решение сотрудника</legend>
-        <p className={styles.note}>
+        <p id={`${id}-action-note`} className={styles.note}>
           Заявка ожидает решения сотрудника независимо от рекомендации скоринга.
           Изучите данные и выберите действие; решение будет сохранено только
           после отправки формы.
         </p>
-        {actions.map((option) => (
-          <label key={option.value} className={styles.choice}>
-            <input
-              type="radio"
-              name="action"
-              value={option.value}
-              checked={action === option.value}
-              aria-invalid={Boolean(errors.action)}
-              aria-describedby={
-                errors.action ? `${id}-action-error` : undefined
-              }
-              onChange={() => {
-                setAction(option.value)
-                setErrors({})
-              }}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
+        <div className={styles.choiceList}>
+          {actions.map((option) => (
+            <label key={option.value} className={styles.choice}>
+              <input
+                type="radio"
+                name="action"
+                value={option.value}
+                checked={action === option.value}
+                aria-invalid={Boolean(errors.action)}
+                aria-describedby={
+                  errors.action ? `${id}-action-error` : undefined
+                }
+                onChange={() => {
+                  setAction(option.value)
+                  setErrors({})
+                }}
+              />
+              <option.Icon
+                className={styles.choiceIcon}
+                aria-hidden="true"
+                focusable="false"
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
         {errors.action && (
           <p id={`${id}-action-error`} className={styles.error} role="alert">
             {errors.action}
@@ -129,7 +151,7 @@ export function DecisionForm({
           className={styles.product}
           aria-label="Предложение по параметрам заявки"
         >
-          <h3>Краткосрочное финансирование</h3>
+          <h3 className={styles.sectionTitle}>Краткосрочное финансирование</h3>
           <dl>
             <div>
               <dt>Сумма предложения</dt>
@@ -161,12 +183,18 @@ export function DecisionForm({
             рекомендации, если она указана, иначе рассчитает её при сохранении.
             Показанный платёж скоринга рассчитан по базовой ставке, а не по
             ставке предложения. Платёж предложения рассчитает сервер.
-            Просмотр карточки не отправляет предложение клиенту.
+            Просмотр условий не отправляет предложение клиенту.
           </p>
         </section>
       )}
       {action === 'OFFER_ALTERNATIVE' && (
-        <div className={styles.alternative}>
+        <section
+          className={styles.alternative}
+          aria-labelledby={`${id}-alternative-title`}
+        >
+          <h3 id={`${id}-alternative-title`} className={styles.sectionTitle}>
+            Другие условия предложения
+          </h3>
           <Input
             name="amount"
             label="Изменить сумму предложения"
@@ -233,37 +261,41 @@ export function DecisionForm({
             предложения рассчитает сервер; скоринг исходной заявки здесь не
             пересчитывается.
           </p>
-        </div>
+        </section>
       )}
 
-      <Textarea
-        name="comment"
-        aria-label="Комментарий к решению"
-        label="Комментарий к решению"
-        labelView="outer"
-        value={values.comment}
-        onChange={(_, { value }) => changeField('comment', value)}
-        error={errors.comment}
-        hint="Обязателен для любого решения. Не более 1000 символов."
-        maxLength={1000}
-        minRows={3}
-        showCounter
-        disabled={disabled || pending}
-        block
-      />
-      <p className={styles.note}>
-        После отправки изменить решение по этой заявке нельзя.
-      </p>
-      <Button
-        type="submit"
-        view="primary"
-        size={48}
-        block
-        loading={pending}
-        disabled={disabled || pending}
-      >
-        Отправить решение
-      </Button>
+      <div className={styles.confirmation}>
+        <Textarea
+          name="comment"
+          aria-label="Комментарий к решению"
+          label="Комментарий к решению"
+          labelView="outer"
+          value={values.comment}
+          onChange={(_, { value }) => changeField('comment', value)}
+          error={errors.comment}
+          hint="Обязателен для любого решения. Не более 1000 символов."
+          maxLength={1000}
+          minRows={3}
+          showCounter
+          disabled={disabled || pending}
+          block
+        />
+        <div className={styles.submit}>
+          <p className={styles.note}>
+            После отправки изменить решение по этой заявке нельзя.
+          </p>
+          <Button
+            type="submit"
+            view="primary"
+            size={48}
+            block
+            loading={pending}
+            disabled={disabled || pending}
+          >
+            Отправить решение
+          </Button>
+        </div>
+      </div>
     </form>
   )
 }
