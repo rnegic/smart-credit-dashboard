@@ -1,0 +1,11 @@
+.badge {
+  max-inline-size: 100%;
+  vertical-align: middle;
+}
+
+.icon {
+  display: block;
+  flex-shrink: 0;
+  inline-size: var(--gap-16);
+  block-size: var(--gap-16);
+}
