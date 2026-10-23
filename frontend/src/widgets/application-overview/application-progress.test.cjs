@@ -133,7 +133,8 @@ test('overview and details expose six semantic stages and inert visual Steps', (
     assert.ok(!html.includes('мес.'))
     if (status === 'OFFER_READY') {
       assert.ok(html.includes(`${offer.termDays} дней`))
-      assert.ok(!html.includes(`${offer.finalRate}% годовых`))
+      assert.ok(!html.split('<aside>')[0].includes(`${offer.finalRate}% годовых`))
+      assert.ok(html.split('<aside>')[1].includes(`${offer.finalRate}% годовых`))
       assert.ok(html.includes('Срок изменен с 30 до 60 дней'))
       const rateOnly = overview({ status, offerOverride: { amount: application.amount, termDays: application.termDays } })
       assert.ok(rateOnly.html.includes('Банк предложил другие условия'))
@@ -219,16 +220,27 @@ test('selected application officer comments stay prominent and separate from aut
   assert.ok(missing.html.includes('Причина отказа не указана.'))
 })
 
-test('no base or final rate leaks into application summaries or details before signing', () => {
+test('offer final rate is visible in the sidebar but not in application summaries before signing', () => {
   for (const provided of [true, false]) {
     for (const status of ['IN_REVIEW', 'OFFER_READY', 'DECLINED']) {
       const { html } = overview({ status, provided, applicationOverride: { finalRate: 99.75 } })
-      assert.ok(!html.includes('% годовых'))
+      const [summary, details] = html.split('<aside>')
+      assert.ok(!summary.includes('% годовых'))
+      assert.ok(!summary.includes('Итоговая ставка'))
       assert.ok(!html.includes('Базовая ставка'))
-      assert.ok(!html.includes('Итоговая ставка'))
       assert.ok(!html.includes('99.75'))
-      assert.ok(!html.includes(String(offer.finalRate)))
+      assert.ok(!html.includes(`${application.rate}% годовых`))
+      if (status === 'OFFER_READY') {
+        assert.ok(details.includes(`Итоговая ставка</dt><dd>${offer.finalRate}% годовых</dd>`))
+      } else {
+        assert.ok(!details.includes('% годовых'))
+        assert.ok(!details.includes('Итоговая ставка'))
+      }
     }
+    const missingOffer = overview({ status: 'OFFER_READY', provided, applicationOverride: { finalRate: 99.75 }, offerOverride: null })
+    assert.ok(!missingOffer.html.includes('% годовых'))
+    const zeroRate = overview({ status: 'OFFER_READY', provided, offerOverride: { finalRate: 0 } })
+    assert.ok(zeroRate.html.split('<aside>')[1].includes('Итоговая ставка</dt><dd>0% годовых</dd>'))
   }
 })
 

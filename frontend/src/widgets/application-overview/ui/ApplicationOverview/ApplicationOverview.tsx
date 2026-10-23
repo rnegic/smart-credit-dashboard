@@ -262,7 +262,7 @@ export function ApplicationOverview({
       ))}
     </ol>
   )
-  const offerParameters = offer && (
+  const renderOfferParameters = (showRate: boolean) => offer && (
     <dl className={styles.parameters}>
       <div>
         <dt>Предложенная сумма</dt>
@@ -281,6 +281,12 @@ export function ApplicationOverview({
         <dt>Предложенный срок</dt>
         <dd>{offer.termDays} дней</dd>
       </div>
+      {showRate && (
+        <div>
+          <dt>Итоговая ставка</dt>
+          <dd>{offer.finalRate}% годовых</dd>
+        </div>
+      )}
       <div>
         <dt>Ежемесячный платёж</dt>
         <dd>{formatMoney(offer.monthlyPayment)}</dd>
@@ -396,7 +402,7 @@ export function ApplicationOverview({
 
         {application.status === 'OFFER_READY' && (
           <div className={styles.progress}>
-            {offerParameters}
+            {renderOfferParameters(false)}
             {offerState && (
               <Typography.Text
                 tag="p"
@@ -629,7 +635,7 @@ export function ApplicationOverview({
               <Typography.TitleResponsive tag="h3" view="small" font="system">
                 Предложение банка
               </Typography.TitleResponsive>
-              {offerParameters}
+              {renderOfferParameters(true)}
               {offer && offer.termDays !== application.termDays && (
                 <Typography.Text tag="p" color="secondary">
                   Срок изменен с {application.termDays} до {offer.termDays}{' '}
