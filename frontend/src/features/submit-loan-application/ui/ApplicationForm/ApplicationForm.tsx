@@ -23,6 +23,7 @@ import {
   createApplicationSchema,
 } from '@/entities/loan-application'
 import {
+  applicationApplicantSubmissionSchema,
   applicationFormSubmissionSchema,
   applicationFormSchema,
   applicationDraftSchema,
@@ -33,6 +34,7 @@ import {
   type PrefillResponse,
 } from '@/entities/application-form'
 import { useDashboard } from '@/entities/dashboard'
+import { getIndustryGroup } from '@/entities/company'
 import { sessionKey } from '@/entities/session'
 import {
   apiRequest,
@@ -61,6 +63,17 @@ const termOptions = [30, 60, 90].map((days) => ({
   key: String(days),
   content: `${days} дней`,
 }))
+const registrationSchema = applicationApplicantSubmissionSchema.pick({
+  firstName: true,
+  lastName: true,
+  ogrnip: true,
+  registrationDate: true,
+  mainOkved: true,
+  industry: true,
+  registrationAddress: true,
+  phone: true,
+  email: true,
+})
 const formSteps = [
   'Параметры финансирования',
   'Данные бизнеса',
@@ -138,7 +151,8 @@ function applicantFields(responseForm: ApplicationForm): IpApplicationData {
     registrationAddress: applicant.registrationAddress ?? '',
     phone: applicant.phone ?? '',
     email: applicant.email ?? '',
-    industry: applicant.industry ?? '',
+    industry:
+      getIndustryGroup(applicant.mainOkved)?.key ?? applicant.industry ?? '',
   }
 }
 
@@ -180,9 +194,9 @@ function ApplicationFormEditor({
   })
   const needsFinancingReview = Boolean(
     !localDraft &&
-      initialDraft &&
-      initialDraft.currentStep > 0 &&
-      initialDraft.form.step1_financingParameters.termDays === null,
+    initialDraft &&
+    initialDraft.currentStep > 0 &&
+    initialDraft.form.step1_financingParameters.termDays === null,
   )
   const [form, setForm] = useState(() =>
     localDraft
@@ -289,8 +303,11 @@ function ApplicationFormEditor({
     registrationAddress: '',
     phone: '',
     email: '',
-    industry: '',
     ...ipEdits,
+    industry:
+      getIndustryGroup(ipEdits.okved ?? company?.okved)?.key ??
+      ipEdits.industry ??
+      '',
   }
 
   function updateIpData(patch: Partial<IpApplicationData>) {
@@ -378,11 +395,7 @@ function ApplicationFormEditor({
         },
         financials: {
           monthlyRevenue: numberOrNull(ipData.monthlyRevenue),
-          existingDebt: ipData.existingDebt.trim()
-            ? numberOrNull(ipData.existingDebt)
-            : needsDebtReview
-              ? null
-              : 0,
+          existingDebt: numberOrNull(ipData.existingDebt),
         },
       },
       prefilled: {
@@ -654,29 +667,50 @@ function ApplicationFormEditor({
     }
     if (isIp && (step === 1 || step === steps.length - 1)) {
       const revenue = numberOrNull(ipData.monthlyRevenue)
-      const debt = ipData.existingDebt.trim()
-        ? numberOrNull(ipData.existingDebt)
-        : needsDebtReview
-          ? null
-          : 0
+      const debt = numberOrNull(ipData.existingDebt)
       const businessErrors: Record<string, string> = {}
       if (!ipData.companyName.trim())
         businessErrors.companyName = 'Укажите название'
       if (!/^\d{12}$/.test(ipData.inn))
         businessErrors.inn = 'ИНН ИП должен содержать 12 цифр'
+      if (!ipData.legalForm.trim())
+        businessErrors.legalForm = 'Укажите форму бизнеса'
       if (!ipData.taxSystem)
         businessErrors.taxSystem = 'Выберите систему налогообложения'
       if (revenue === null || revenue <= 0)
         businessErrors.monthlyRevenue =
           'Среднемесячная выручка должна быть больше 0 ₽'
       if (debt === null || debt < 0)
-        businessErrors.existingDebt = 'Укажите задолженность от 0 ₽'
+        businessErrors.existingDebt = 'Укажите ежемесячный платеж от 0 ₽'
       if (!ipData.personalData)
         businessErrors.personalData = 'Подтвердите согласие'
       if (!ipData.bkiRequest) businessErrors.bkiRequest = 'Подтвердите согласие'
       if (!ipData.fnsRequest) businessErrors.fnsRequest = 'Подтвердите согласие'
       if (Object.keys(businessErrors).length) {
         setErrors(businessErrors)
+        focusInvalidField(Object.keys(businessErrors)[0])
+        return
+      }
+    }
+    if (isIp && step >= 2) {
+      const registration = registrationSchema.safeParse(
+        buildSubmission().step2_businessData.applicant,
+      )
+      if (!registration.success) {
+        const registrationErrors = Object.fromEntries(
+          registration.error.issues.map((issue) => {
+            const name = String(issue.path[0])
+            const field =
+              name === 'firstName' || name === 'lastName'
+                ? 'fullName'
+                : name === 'mainOkved'
+                  ? 'okved'
+                  : name
+            return [field, issue.message]
+          }),
+        )
+        setErrors(registrationErrors)
+        focusInvalidField(Object.keys(registrationErrors)[0])
         return
       }
     }
@@ -726,6 +760,14 @@ function ApplicationFormEditor({
     submitting.current = true
     submit.mutate(submission.data)
   }
+  function focusInvalidField(name: string | undefined) {
+    if (!name) return
+    formRef.current
+      ?.querySelector<HTMLElement>(
+        `[name="${name}"]:not([type="hidden"]), [id$="-${name}-input"]`,
+      )
+      ?.focus()
+  }
   const busy =
     prefill.isPending ||
     saveDraft.isPending ||
@@ -748,10 +790,16 @@ function ApplicationFormEditor({
             Расскажите о задаче бизнеса своими словами. Например, сколько нужно,
             на что и на какой срок.
           </p>
+          <p id={`${id}-intent-terms`}>
+            <strong>В этой анкете доступны только 30, 60 или 90 дней.</strong>{' '}
+            Укажите один из этих сроков в описании. Это срок транша, а не всего
+            договора.
+          </p>
           <Textarea
             id={`${id}-intent`}
             name="description"
             aria-label="На что нужны деньги"
+            aria-describedby={`${id}-intent-terms`}
             block
             autosize
             minRows={4}
@@ -759,7 +807,7 @@ function ApplicationFormEditor({
             maxLength={2000}
             value={form.description}
             error={errors.description}
-            placeholder="Нужно 3 млн ₽ на закупку товара перед сезоном, на 90 дней"
+            placeholder="Например: нужно 1,5 млн ₽ на закупку товара на 60 дней"
             onChange={(_, { value }) =>
               setForm({ ...form, description: value })
             }
@@ -898,9 +946,7 @@ function ApplicationFormEditor({
       >
         <Modal.Header
           hasCloser={!discardDraft.isPending}
-          title={
-            <span id={`${id}-discard-title`}>Сбросить заявку?</span>
-          }
+          title={<span id={`${id}-discard-title`}>Сбросить заявку?</span>}
           closerProps={{ 'aria-label': 'Закрыть подтверждение' }}
         />
         <Modal.Content>
@@ -991,10 +1037,14 @@ function ApplicationFormEditor({
             <h2 ref={stepHeadingRef} tabIndex={-1} className={styles.stepTitle}>
               {steps[step]}
             </h2>
+            <p>
+              Все поля анкеты обязательны. Если кредитов нет, укажите платеж 0
+              ₽.
+            </p>
             {needsDebtReview && (
               <p role="status">
-                Условия изменились: выберите срок в днях и укажите общий остаток
-                долга вместо ежемесячного платежа. Остальные данные черновика
+                Условия изменились: выберите срок в днях и повторно укажите
+                ежемесячный платеж по кредитам. Остальные данные черновика
                 сохранены.
               </p>
             )}
@@ -1016,6 +1066,7 @@ function ApplicationFormEditor({
                 <div className={styles.fields}>
                   <Input
                     name="amount"
+                    required
                     block
                     label="Сумма, ₽"
                     labelView="outer"
@@ -1044,6 +1095,7 @@ function ApplicationFormEditor({
                     block
                     label="Срок, дней"
                     labelView="outer"
+                    fieldProps={{ 'aria-required': true }}
                     options={termOptions}
                     selected={form.termDays || null}
                     placeholder="Выберите срок"
@@ -1066,6 +1118,7 @@ function ApplicationFormEditor({
                   />
                   <Input
                     name="purpose"
+                    required
                     block
                     label="Цель финансирования"
                     labelView="outer"
@@ -1198,6 +1251,7 @@ function ApplicationFormEditor({
                       <Input
                         id={`${id}-reviewAmount`}
                         name="reviewAmount"
+                        required
                         block
                         aria-label="Сумма, ₽"
                         inputMode="decimal"
@@ -1214,6 +1268,7 @@ function ApplicationFormEditor({
                         block
                         label="Срок, дней"
                         labelView="outer"
+                        fieldProps={{ 'aria-required': true }}
                         hint="Доступные сроки: 30, 60 или 90 дней"
                         options={termOptions}
                         selected={form.termDays || null}
@@ -1232,6 +1287,7 @@ function ApplicationFormEditor({
                       <Input
                         id={`${id}-reviewPurpose`}
                         name="reviewPurpose"
+                        required
                         block
                         aria-label="Цель финансирования"
                         maxLength={100}

@@ -38,6 +38,7 @@ export function AcceptOffer({ offer, application }: AcceptOfferProps) {
         <Typography.TitleResponsive tag="h3" view="small" font="system">
           Предложение принято
         </Typography.TitleResponsive>
+        <p>Итоговая ставка: {offer.finalRate}% годовых.</p>
         <p>Ожидаем подтверждения выдачи. Деньги еще не зачислены.</p>
       </div>
     )
