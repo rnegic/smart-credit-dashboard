@@ -1,7 +1,7 @@
 package alfa.smartcredit.controller;
 
+import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
-import alfa.smartcredit.dto.CreateApplicationRequest;
 import alfa.smartcredit.dto.LegalFormRequest;
 import alfa.smartcredit.service.ApplicationService;
 import alfa.smartcredit.service.SessionContext;
@@ -29,7 +29,7 @@ public class ClientController {
 
     @PostMapping("/applications")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApplicationView create(@Valid @RequestBody CreateApplicationRequest body, HttpServletRequest request) {
+    public ApplicationView create(@Valid @RequestBody ApplicationFormDto body, HttpServletRequest request) {
         return applicationService.create(sessionContext.requireCompanyId(request), body);
     }
 

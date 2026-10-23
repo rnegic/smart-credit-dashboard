@@ -1,4 +1,4 @@
-export { apiRequest, apiEmpty, ApiError } from './client'
+export { apiRequest, apiOptionalRequest, apiEmpty, ApiError } from './client'
 export {
   sessionEvents,
   beginSessionChange,

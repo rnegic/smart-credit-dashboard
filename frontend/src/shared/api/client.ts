@@ -163,6 +163,26 @@ export async function apiRequest<T>(
   return result.data
 }
 
+export async function apiOptionalRequest<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  options?: RequestInit,
+): Promise<T | null> {
+  const { response, generation, signal } = await request(path, options)
+  if (response.status === 204) return null
+  const result = schema.safeParse(
+    await readJson(response, generation, signal, options?.signal),
+  )
+  assertRequest(generation, signal, options?.signal)
+  if (!result.success)
+    throw new ApiError(
+      response.status,
+      'INVALID_RESPONSE',
+      'Сервер вернул данные в неожиданном формате. Повторите запрос.',
+    )
+  return result.data
+}
+
 /** Send a request whose successful response does not require a JSON body. */
 export async function apiEmpty(
   path: string,

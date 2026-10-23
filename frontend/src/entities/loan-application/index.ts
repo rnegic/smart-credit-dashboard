@@ -31,6 +31,7 @@ export const offerSchema = z.object({
   status: z.enum(['ACTIVE', 'ACCEPTED', 'EXPIRED']),
 })
 export const applicationViewSchema = applicationSchema.extend({
+  businessTask: z.string().nullable(),
   companyName: z.string(),
   inn: z.string(),
   legalForm: z.string().nullable(),
