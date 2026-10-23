@@ -48,7 +48,8 @@
 }
 
 .note,
-.error {
+.error,
+.warning {
   margin: var(--gap-0);
   overflow-wrap: anywhere;
 }
@@ -59,6 +60,13 @@
 
 .error {
   color: var(--color-light-status-negative);
+}
+
+.warning {
+  padding: var(--gap-16);
+  border-radius: var(--border-radius-12);
+  color: var(--color-light-text-primary);
+  background: var(--color-light-status-muted-attention);
 }
 
 .product {

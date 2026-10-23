@@ -3,22 +3,22 @@ import { Button } from '@alfalab/core-components/button'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Textarea } from '@alfalab/core-components/textarea'
-import type { ApplicationView } from '@/entities/loan-application'
+import type { BankApplicationView } from '@/entities/loan-application'
 import { formatMoney } from '@/shared/lib'
 import { decisionSchema, type Decision } from '../../model/decision'
 import styles from './DecisionForm.module.scss'
 
 /** Officer decision state and the validated submission callback. */
 export interface DecisionFormProps {
-  application: ApplicationView
+  application: BankApplicationView
   disabled: boolean
   pending: boolean
   onSubmit: (decision: Decision) => void
 }
 
 const actions = [
-  { value: 'APPROVE', label: 'Предложить новые условия' },
-  { value: 'OFFER_ALTERNATIVE', label: 'Указать условия вручную' },
+  { value: 'APPROVE', label: 'Одобрить запрошенные сумму и срок' },
+  { value: 'OFFER_ALTERNATIVE', label: 'Предложить другие условия' },
   { value: 'DECLINE', label: 'Отказать' },
 ] as const
 
@@ -47,6 +47,8 @@ export function DecisionForm({
     finalRate: '',
   })
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
+  const recommendedRate = application.recommendation?.finalRate
+  const recommendedAmount = application.recommendation?.amount
 
   function changeField(field: Exclude<Field, 'action'>, value: string) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -92,8 +94,9 @@ export function DecisionForm({
       <fieldset className={styles.choices} disabled={disabled || pending}>
         <legend className={styles.legend}>Решение сотрудника</legend>
         <p className={styles.note}>
-          Заявка ожидает ручного решения. Изучите скоринг и выберите действие;
-          выбор будет сохранён только после отправки формы.
+          Заявка ожидает решения сотрудника независимо от рекомендации скоринга.
+          Изучите данные и выберите действие; решение будет сохранено только
+          после отправки формы.
         </p>
         {actions.map((option) => (
           <label key={option.value} className={styles.choice}>
@@ -137,15 +140,15 @@ export function DecisionForm({
               <dd>{application.termDays} дней</dd>
             </div>
             <div>
-              <dt>Базовая ставка продукта</dt>
+              <dt>Ставка при одобрении</dt>
               <dd>
-                {application.rate == null
-                  ? 'Не передана сервером'
-                  : `${application.rate}% годовых`}
+                {recommendedRate == null
+                  ? 'Рассчитает сервер при сохранении'
+                  : `${recommendedRate}% годовых из рекомендации`}
               </dd>
             </div>
             <div>
-              <dt>Расчётный платёж в скоринге</dt>
+              <dt>Платёж скоринга по базовой ставке</dt>
               <dd>
                 {application.scoring?.newMonthlyPayment == null
                   ? 'Расчёт не передан'
@@ -154,10 +157,11 @@ export function DecisionForm({
             </div>
           </dl>
           <p className={styles.note}>
-            Сумма и срок соответствуют заявке. Итоговую ставку и платёж
-            рассчитает сервер при сохранении решения. Сейчас показаны базовые
-            параметры, а не окончательные условия подписания. Просмотр карточки
-            не отправляет предложение клиенту.
+            Сумма и срок соответствуют заявке. Сервер использует ставку из
+            рекомендации, если она указана, иначе рассчитает её при сохранении.
+            Показанный платёж скоринга рассчитан по базовой ставке, а не по
+            ставке предложения. Платёж предложения рассчитает сервер.
+            Просмотр карточки не отправляет предложение клиенту.
           </p>
         </section>
       )}
@@ -165,46 +169,69 @@ export function DecisionForm({
         <div className={styles.alternative}>
           <Input
             name="amount"
-            label="Сумма предложения"
+            label="Изменить сумму предложения"
             labelView="outer"
             inputMode="decimal"
             value={values.amount}
             onChange={(_, { value }) => changeField('amount', value)}
             error={errors.amount}
-            hint="От 50 000 до 20 000 000 ₽"
+            hint={`Необязательно. Без изменения: ${
+              recommendedAmount == null
+                ? 'сумму рассчитает сервер'
+                : `${formatMoney(recommendedAmount)} из рекомендации`
+            }. От 50 000 до 20 000 000 ₽.`}
             disabled={disabled || pending}
             block
           />
           <Select
             ref={termRef}
             name="termDays"
-            label="Срок, дней"
+            label="Изменить срок, дней"
             labelView="outer"
             options={termOptions}
             selected={values.termDays || null}
             onChange={({ selected }) =>
               changeField('termDays', selected?.key ?? '')
             }
+            allowUnselect
+            clear={values.termDays !== ''}
+            onClear={() => changeField('termDays', '')}
             error={errors.termDays}
-            hint="30, 60 или 90 дней"
+            hint={`Необязательно. Без изменения: ${application.termDays} дней из заявки. Можно выбрать 30, 60 или 90 дней.`}
             disabled={disabled || pending}
             block
           />
           <Input
             name="finalRate"
-            label="Итоговая годовая ставка, %"
+            label="Изменить итоговую годовую ставку, %"
             labelView="outer"
             inputMode="decimal"
             value={values.finalRate}
             onChange={(_, { value }) => changeField('finalRate', value)}
             error={errors.finalRate}
-            hint="От 0 до 100% включительно"
+            hint={`Необязательно. Без изменения: ${
+              recommendedRate == null
+                ? 'ставку рассчитает сервер'
+                : `${recommendedRate}% из рекомендации`
+            }. От 0 до 100% включительно.`}
             disabled={disabled || pending}
             block
           />
+          {values.termDays !== '' &&
+            values.termDays !== String(application.termDays) &&
+            values.finalRate.trim() === '' &&
+            recommendedRate != null && (
+              <p className={styles.warning} role="status">
+                Срок изменён, но ставка не задана. Сервер использует ставку из
+                рекомендации {recommendedRate}% без пересчёта под новый срок.
+                Укажите ставку вручную, если требуется её изменить.
+              </p>
+            )}
           <p className={styles.note}>
-            Сумма, срок и итоговая ставка проверяются сервером. Платёж по
-            предложению рассчитает сервер; скоринг здесь не пересчитывается.
+            Все изменения независимы и необязательны. Пустые поля не отправляются;
+            сервер применит указанные выше значения по умолчанию. Платёж
+            предложения рассчитает сервер; скоринг исходной заявки здесь не
+            пересчитывается.
           </p>
         </div>
       )}
