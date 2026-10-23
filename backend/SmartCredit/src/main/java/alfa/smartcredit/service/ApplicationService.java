@@ -3,6 +3,7 @@ package alfa.smartcredit.service;
 import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
 import alfa.smartcredit.dto.DecisionRequest;
+import alfa.smartcredit.event.ApplicationStatusChangedEvent;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
 import alfa.smartcredit.model.CreditApplication;
@@ -16,6 +17,7 @@ import alfa.smartcredit.repository.CompanyRepository;
 import alfa.smartcredit.repository.CreditApplicationRepository;
 import alfa.smartcredit.repository.OfferRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,7 @@ public class ApplicationService {
     private final DecisionEngine decisionEngine;
     private final AiCommentService aiCommentService;
     private final ObjectMapper mapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public void setLegalForm(Long companyId, String legalForm) {
@@ -93,6 +96,11 @@ public class ApplicationService {
         a.setFormData(tree);
         applicationRepository.saveAndFlush(a);
         draftRepository.deleteByCompanyId(companyId);
+
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                companyId, a.getId(), ApplicationStatus.IN_REVIEW.name(),
+                String.format("Заявка №%d на %s подана и находится на рассмотрении банка.",
+                        a.getId(), money(s1.amount()))));
 
         return toView(a, company, false);
     }
@@ -164,6 +172,22 @@ public class ApplicationService {
             case APPROVE -> DecisionStatus.APPROVED;
             case OFFER_ALTERNATIVE -> DecisionStatus.ALTERNATIVE_OFFER;
         });
+        // строим сообщение под фактическое состояние
+        String text = switch (a.getStatus()) {
+            case DECLINED -> String.format(
+                    "По заявке №%d принято решение об отказе. Комментарий банка: %s",
+                    a.getId(), req.comment());
+            case OFFER_READY -> String.format(
+                    "По заявке №%d одобрено предложение: %s под %s%% на %d дн. Подпишите его в личном кабинете.",
+                    a.getId(), money(a.getFinalRate() != null ? offerAmount(a.getId()) : a.getAmount()),
+                    pct(a.getFinalRate()), termDaysOf(a));
+            default -> null;
+        };
+        if (text != null) {
+            eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                    a.getCompanyId(), a.getId(), a.getStatus().name(), text));
+        }
+
         return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow(), true);
     }
 
@@ -176,6 +200,14 @@ public class ApplicationService {
         o.setStatus(OfferStatus.ACCEPTED);
         find(o.getApplicationId()).setStatus(ApplicationStatus.ACCEPTED);
         // TODO: здесь же можно создать Loan + график платежей
+
+        o.setStatus(OfferStatus.ACCEPTED);
+        CreditApplication app = find(o.getApplicationId());
+        app.setStatus(ApplicationStatus.ACCEPTED);
+
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                app.getCompanyId(), app.getId(), ApplicationStatus.ACCEPTED.name(),
+                String.format("Вы подписали предложение по заявке №%d. Кредит будет оформлен.", app.getId())));
     }
 
     // ---------- helpers ----------
@@ -232,5 +264,15 @@ public class ApplicationService {
                 a.getStatus().name(), a.getDecision() == null ? null : a.getDecision().name(), a.getFinalRate(),
                 a.getRiskScore(), a.getRiskClass(), forBank ? a.getAiComment() : null, a.getOfficerComment(),
                 a.getCreatedAt(), scoring, recommendation, offer);
+    }
+    private BigDecimal offerAmount(Long applicationId) {
+        return offerRepository.findFirstByApplicationIdOrderByIdDesc(applicationId)
+                .map(Offer::getAmount).orElse(BigDecimal.ZERO);
+    }
+    private static String money(BigDecimal v) {
+        return String.format(java.util.Locale.forLanguageTag("ru-RU"), "%,.0f ₽", v);
+    }
+    private static String pct(BigDecimal v) {
+        return v == null ? "—" : v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
     }
 }
