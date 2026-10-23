@@ -1,14 +1,19 @@
 import { useId, useRef, useState } from 'react'
 import { Button } from '@alfalab/core-components/button'
+import { IconButton } from '@alfalab/core-components/icon-button'
+import { TooltipDesktop } from '@alfalab/core-components/tooltip/desktop'
+import { ArrowsCwMIcon } from '@alfalab/icons/glyph/dist/ArrowsCwMIcon'
+import { CalendarLineMIcon } from '@alfalab/icons/glyph/dist/CalendarLineMIcon'
+import { DocumentLinesMIcon } from '@alfalab/icons/glyph/dist/DocumentLinesMIcon'
+import { InformationCircleMIcon } from '@alfalab/icons/glyph/dist/InformationCircleMIcon'
+import { WalletLineMIcon } from '@alfalab/icons/glyph/dist/WalletLineMIcon'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { sessionKey, useSession, type Session } from '@/entities/session'
 import { applicationBusinessSummarySchema } from '@/entities/application-form'
 import { getCompanyAge, getIndustryGroup } from '@/entities/company'
 import {
-  applicationDecisionLabels,
   bankApplicationViewSchema,
   bankApplicationViewsSchema,
-  applicationStatusLabels,
   type BankApplicationView,
 } from '@/entities/loan-application'
 import {
@@ -20,6 +25,9 @@ import {
 } from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
 import { Panel } from '@/shared/ui'
+import { ApplicationQueue } from '../ApplicationQueue'
+import { ApplicationStatus } from '../ApplicationStatus'
+import { DecisionStatus } from '../DecisionStatus'
 import { DecisionForm } from '../DecisionForm'
 import type { Decision } from '../../model/decision'
 import styles from './BankWorkspace.module.scss'
@@ -49,6 +57,10 @@ const scoringPointLabels: Record<string, string> = {
   amountToRevenue: 'Сумма / годовая выручка',
   isDataComplete: 'Полнота данных',
 }
+const updateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+  hour: '2-digit',
+  minute: '2-digit',
+})
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return `${error.message} (${error.code})`
@@ -70,6 +82,7 @@ export function BankWorkspace() {
   const selectedId =
     selection?.userId === userId ? selection?.applicationId : undefined
   const decisionLocks = useRef(new Set<string>())
+  const queueTriggerRef = useRef<HTMLButtonElement>(null)
   const [lockedKeys, setLockedKeys] = useState<ReadonlySet<string>>(new Set())
 
   const applications = useQuery({
@@ -79,7 +92,9 @@ export function BankWorkspace() {
     enabled: session.data?.role === 'BANK_OFFICER' && !session.isError,
     staleTime: 15_000,
     refetchInterval: 15_000,
-    notifyOnChangeProps: ['data', 'error', 'isPending', 'isError'],
+    notifyOnChangeProps: [
+      'data', 'error', 'isPending', 'isError', 'isFetching', 'dataUpdatedAt',
+    ],
     gcTime: 5 * 60_000,
     retry: false,
   })
@@ -265,39 +280,50 @@ export function BankWorkspace() {
 
   const officerId = session.data.userId
   const queue = applications.data
-  const inReview = queue?.filter((item) => item.status === 'IN_REVIEW').length
 
   return (
     <section className={styles.workspace} aria-labelledby={headingId}>
       <header className={styles.header}>
         <div className={styles.heading}>
           <h1 id={headingId}>Рабочее место банка</h1>
-          <p className={styles.secondary}>
-            Все новые заявки рассматривает сотрудник. Скоринг и AI-сводка
-            помогают принять решение, но не принимают его автоматически.
-            Очередь заявок обновляется в фоне каждые 15 секунд.
+          <p className={styles.caption}>
+            <DocumentLinesMIcon aria-hidden="true" />
+            Кредитные заявки предпринимателей
           </p>
-          {queue && (
-            <p>
-              Всего: {queue.length}. На рассмотрении: {inReview}.
-            </p>
-          )}
         </div>
-        <Button
-          type="button"
-          view="secondary"
-          size={48}
-          className={styles.refresh}
-          disabled={decision.isPending}
-          onClick={() => {
-            void applications.refetch()
-          }}
-        >
-          Обновить очередь
-        </Button>
+        <div className={styles.refreshGroup}>
+          <div className={styles.freshness}>
+            <span>
+              {applications.isFetching
+                ? 'Обновляем очередь...'
+                : applications.isError
+                  ? 'Не удалось обновить'
+                  : applications.dataUpdatedAt > 0
+                    ? `Обновлено в ${updateTimeFormatter.format(applications.dataUpdatedAt)}`
+                    : 'Загружаем очередь'}
+            </span>
+            <span className={styles.secondary}>Автообновление каждые 15 сек.</span>
+          </div>
+          <TooltipDesktop content="Обновить очередь" position="bottom">
+            <IconButton
+              type="button"
+              view="secondary"
+              size={48}
+              icon={<ArrowsCwMIcon aria-hidden="true" />}
+              aria-label="Обновить очередь"
+              loading={applications.isFetching}
+              disabled={decision.isPending || applications.isFetching}
+              onClick={() => {
+                void applications.refetch()
+              }}
+            />
+          </TooltipDesktop>
+        </div>
       </header>
 
-      {applications.isPending && <p role="status">Загружаем заявки...</p>}
+      {applications.isPending && (
+        <p className={styles.loading} role="status">Загружаем заявки...</p>
+      )}
       {applications.isError && (
         <div className={styles.error} role="alert">
           <strong>Не удалось загрузить очередь</strong>
@@ -310,83 +336,22 @@ export function BankWorkspace() {
           )}
         </div>
       )}
-      {queue?.length === 0 && <p role="status">Заявок пока нет.</p>}
-      {queue && queue.length > 0 && (
-        <ul className={styles.queue} aria-label="Все кредитные заявки">
-          {queue.map((item) => (
-            <li key={item.id} className={styles.application}>
-              <div className={styles.company}>
-                <span className={styles.secondary}>Заявка № {item.id}</span>
-                <h2>{item.companyName}</h2>
-                <span className={styles.secondary}>
-                  {item.legalForm === 'IP'
-                    ? 'ИП'
-                    : item.legalForm === 'OOO'
-                      ? 'ООО'
-                      : (item.legalForm ?? 'Форма не указана')}{' '}
-                  · ИНН {item.inn}
-                </span>
-                <span className={styles.secondary}>
-                  Создана:{' '}
-                  <time dateTime={item.createdAt}>
-                    {formatDate(item.createdAt)}
-                  </time>
-                </span>
-              </div>
-              <dl className={styles.request}>
-                <div>
-                  <dt>Сумма</dt>
-                  <dd>
-                    <strong>{formatMoney(item.amount)}</strong>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Срок</dt>
-                  <dd>{item.termDays} дней</dd>
-                </div>
-                <div>
-                  <dt>Цель</dt>
-                  <dd>{item.purpose ?? 'Не указана'}</dd>
-                </div>
-              </dl>
-              <div className={styles.queueActions}>
-                <span className={styles.status}>
-                  {applicationStatusLabels[item.status]}
-                </span>
-                <span className={styles.secondary}>
-                  Решение банка:{' '}
-                  {item.decision
-                    ? applicationDecisionLabels[item.decision]
-                    : 'Не принято'}
-                </span>
-                <span className={styles.secondary}>
-                  Рекомендация скоринга:{' '}
-                  {item.recommendation
-                    ? applicationDecisionLabels[item.recommendation.decision]
-                    : 'Не сохранена'}
-                </span>
-                <Button
-                  type="button"
-                  view="secondary"
-                  size={48}
-                  block
-                  disabled={decision.isPending}
-                  aria-label={`Открыть заявку № ${item.id}: ${item.companyName}`}
-                  onClick={() =>
-                    setSelection({ userId: officerId, applicationId: item.id })
-                  }
-                >
-                  Открыть заявку
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+      {queue && (
+        <ApplicationQueue
+          applications={queue}
+          disabled={decision.isPending}
+          onSelect={(item, trigger) => {
+            queueTriggerRef.current = trigger
+            setSelection({ userId: officerId, applicationId: item.id })
+          }}
+        />
       )}
 
       <Panel
         open={selectedId !== undefined}
         title={`Заявка № ${selectedId ?? ''}`}
+        dismissible={!decision.isPending}
+        returnFocusRef={queueTriggerRef}
         onClose={() => {
           if (!decision.isPending) setSelection(null)
         }}
@@ -422,16 +387,19 @@ export function BankWorkspace() {
           {application && (
             <>
               <section className={styles.section} aria-label="Параметры заявки">
-                <h2>{application.companyName}</h2>
-                <span className={styles.status}>
-                  {applicationStatusLabels[application.status]}
-                </span>
+                <div className={styles.detailHeading}>
+                  <h2>{application.companyName}</h2>
+                  <ApplicationStatus status={application.status} />
+                </div>
                 <dl
                   className={styles.businessFacts}
                   aria-label="Ключевые показатели бизнеса"
                 >
                   <div>
-                    <dt>Среднемесячная выручка</dt>
+                    <dt>
+                      <WalletLineMIcon aria-hidden="true" />
+                      Среднемесячная выручка
+                    </dt>
                     <dd>
                       {applicationForm.isPending
                         ? 'Загружаем…'
@@ -441,42 +409,36 @@ export function BankWorkspace() {
                     </dd>
                   </div>
                   <div>
-                    <dt>Возраст компании на дату заявки</dt>
+                    <dt>
+                      <CalendarLineMIcon aria-hidden="true" />
+                      Возраст компании на дату заявки
+                    </dt>
                     <dd>
                       {applicationForm.isPending ? 'Загружаем…' : companyAge}
                     </dd>
                   </div>
                 </dl>
-                {applicationForm.isError && (
-                  <div className={styles.secondary} role="status">
-                    {applicationForm.error instanceof ApiError &&
-                    applicationForm.error.status === 404 ? (
+                {applicationForm.isError &&
+                  !(applicationForm.error instanceof ApiError &&
+                    applicationForm.error.status === 404) && (
+                    <div className={styles.secondary} role="status">
                       <p>
-                        Анкета этой заявки не сохранена. Выручка и точная дата
-                        регистрации недоступны, в том числе для старых
-                        демо-заявок.
+                        Не удалось загрузить данные бизнеса:{' '}
+                        {errorMessage(applicationForm.error)}
                       </p>
-                    ) : (
-                      <>
-                        <p>
-                          Не удалось загрузить данные бизнеса:{' '}
-                          {errorMessage(applicationForm.error)}
-                        </p>
-                        <Button
-                          type="button"
-                          view="text"
-                          size={32}
-                          loading={applicationForm.isFetching}
-                          onClick={() => {
-                            void applicationForm.refetch()
-                          }}
-                        >
-                          Повторить загрузку анкеты
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                )}
+                      <Button
+                        type="button"
+                        view="text"
+                        size={32}
+                        loading={applicationForm.isFetching}
+                        onClick={() => {
+                          void applicationForm.refetch()
+                        }}
+                      >
+                        Повторить загрузку анкеты
+                      </Button>
+                    </div>
+                  )}
                 <dl className={styles.parameters}>
                   <div>
                     <dt>ИНН</dt>
@@ -541,7 +503,10 @@ export function BankWorkspace() {
                 className={styles.scoring}
                 aria-label="Рекомендация скоринга, только для банка"
               >
-                <h3>Рекомендация скоринга</h3>
+                <h3 className={styles.sectionTitle}>
+                  <InformationCircleMIcon aria-hidden="true" />
+                  Рекомендация скоринга
+                </h3>
                 <p className={styles.secondary}>
                   Это рекомендация, не окончательное решение
                 </p>
@@ -551,7 +516,7 @@ export function BankWorkspace() {
                       <div>
                         <dt>Рекомендуемое решение</dt>
                         <dd>
-                          {applicationDecisionLabels[recommendation.decision]}
+                          <DecisionStatus decision={recommendation.decision} />
                         </dd>
                       </div>
                       <div>
@@ -766,9 +731,9 @@ export function BankWorkspace() {
                   <div>
                     <dt>Решение банка</dt>
                     <dd>
-                      {application.decision
-                        ? applicationDecisionLabels[application.decision]
-                        : 'Не принято'}
+                      {application.decision ? (
+                        <DecisionStatus decision={application.decision} />
+                      ) : 'Не принято'}
                     </dd>
                   </div>
                 </dl>
