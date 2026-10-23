@@ -22,30 +22,19 @@ export const decisionSchema = z.discriminatedUnion('action', [
     amount: decimalSchema.pipe(
       z
         .number()
-        .min(10_000, 'Минимальная сумма в прототипе: 10 000')
-        .max(
-          Number.MAX_SAFE_INTEGER,
-          'Сумма слишком велика для точного расчёта',
-        ),
+        .min(50_000, 'Минимальная сумма 50 000 ₽')
+        .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
     ),
-    termMonths: z
-      .string()
-      .trim()
-      .min(1, 'Укажите срок')
-      .regex(/^\d+$/, 'Введите целое число месяцев')
-      .transform(Number)
-      .pipe(
-        z
-          .number()
-          .int('Введите целое число месяцев')
-          .min(1, 'Срок от 1 месяца')
-          .max(120, 'Срок не более 120 месяцев'),
-      ),
-    ratePercent: decimalSchema.pipe(
+    termDays: z
+      .enum(['30', '60', '90'], {
+        error: 'Выберите срок 30, 60 или 90 дней',
+      })
+      .transform(Number),
+    finalRate: decimalSchema.pipe(
       z
         .number()
-        .positive('Ставка должна быть больше нуля')
-        .max(100, 'Проверьте ставку: не более 100% в прототипе'),
+        .min(0, 'Ставка не может быть отрицательной')
+        .max(100, 'Ставка не более 100%'),
     ),
   }),
 ])

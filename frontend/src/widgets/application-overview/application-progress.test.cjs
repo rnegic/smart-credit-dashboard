@@ -31,12 +31,14 @@ const { getApplicationProgress } = load('entities/loan-application/get-applicati
 const codes = ['SUBMITTED', 'REVIEW', 'DECISION', 'OFFER', 'SIGNING', 'ISSUED']
 const titles = ['Заявка', 'Проверка', 'Решение', 'Предложение', 'Подписание', 'Выдача']
 const application = {
-  id: 7, amount: 100000, termMonths: 12, purpose: 'Оборотные средства',
+  id: 7, amount: 100000, termDays: 30, rate: 24.5, purpose: 'Оборотные средства',
+  decision: 'ALTERNATIVE_OFFER', finalRate: null,
+  internalScore: 66, riskClass: 'B', scoring: null,
   createdAt: '2026-10-01T12:00:00Z', status: 'OFFER_READY',
 }
 const offer = {
-  id: 9, amount: 90000, termMonths: 24, ratePercent: 15,
-  monthlyPayment: 4364, validUntil: '2099-12-31', status: 'ACTIVE',
+  id: 9, amount: 90000, termDays: 60, finalRate: 25.25,
+  monthlyPayment: 48735.62, validUntil: '2099-12-31', status: 'ACTIVE',
 }
 const styles = new Proxy({}, { get: (_, key) => String(key) })
 const text = ({ children, tag = 'span', ...props }) => React.createElement(tag, {
@@ -68,9 +70,12 @@ test('progress does not share mutable results or mark issuance complete', () => 
   assert.equal(second[5].state, 'CURRENT')
 })
 
-function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed = false } = {}) {
+function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed = false, offerOverride = {}, officerComment = 'Недостаточно данных о доходах' } = {}) {
   const renderedSteps = []
-  const current = { ...application, status }
+  const current = { ...application, status, decision: {
+    IN_REVIEW: 'MANUAL_REVIEW', OFFER_READY: 'ALTERNATIVE_OFFER', ACCEPTED: 'ALTERNATIVE_OFFER', DECLINED: 'DECLINED',
+  }[status] }
+  const view = { ...current, offer: { ...offer, ...offerOverride }, officerComment, aiComment: 'Недостаточно данных о доходах' }
   const ApplicationForm = () => null
   const { ApplicationOverview } = load('widgets/application-overview/ui/ApplicationOverview/ApplicationOverview.tsx', {
     react: { ...React, useId: () => 'application-heading', useRef: () => ({ current: null }), useState: () => [true, () => {}] },
@@ -91,7 +96,8 @@ function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed
     '@/entities/loan-application': {
       getApplicationProgress,
       applicationStatusLabels: { IN_REVIEW: 'На рассмотрении', OFFER_READY: 'Предложение банка', ACCEPTED: 'Предложение принято', DECLINED: 'Отказ по заявке' },
-      useApplications: () => ({ isPending: false, isError: false, data: [{ ...current, offer, officerComment: 'Недостаточно данных о доходах' }] }),
+      applicationDecisionLabels: { INFO_REQUIRED: 'Нужны дополнительные сведения', DECLINED: 'Отказ', APPROVED: 'Одобрено', ALTERNATIVE_OFFER: 'Предложены другие условия', MANUAL_REVIEW: 'Ручная проверка' },
+      useApplications: () => ({ isPending: false, isError: false, data: [view] }),
     },
     '@/features/accept-offer': { AcceptOffer: () => null },
     '@/features/submit-loan-application': { ApplicationForm },
@@ -100,7 +106,7 @@ function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed
     '@/shared/ui': { Panel: ({ children }) => React.createElement('aside', null, children) },
     './ApplicationOverview.module.scss': { default: styles },
   })
-  const element = ApplicationOverview({ application: provided ? { ...current, offer, officerComment: 'Недостаточно данных о доходах' } : undefined })
+  const element = ApplicationOverview({ application: provided ? view : undefined })
   return { element, html: renderToStaticMarkup(element), renderedSteps, ApplicationForm }
 }
 
@@ -118,14 +124,26 @@ test('overview and details expose six semantic stages and inert visual Steps', (
       assert.equal(props.isMarkCompletedSteps, false)
     }
     assert.ok(!html.includes('Загружаем этапы заявки'))
+    assert.ok(html.includes(`${application.termDays} дней`))
+    assert.ok(!html.includes('мес.'))
+    if (status === 'OFFER_READY') {
+      assert.ok(html.includes(`${offer.termDays} дней`))
+      assert.ok(html.includes(`${offer.finalRate}% годовых`))
+      assert.ok(html.includes('Срок изменен с 30 до 60 дней'))
+      const rateOnly = overview({ status, offerOverride: { amount: application.amount, termDays: application.termDays } })
+      assert.ok(rateOnly.html.includes('Банк предложил другие условия'))
+    }
   }
 })
 
 test('decline is a negative decision, not waiting for an offer', () => {
-  const { html, renderedSteps } = overview({ status: 'DECLINED' })
+  const { html, renderedSteps } = overview({ status: 'DECLINED', officerComment: null })
   assert.ok(html.includes('Решение: отказ по заявке'))
   assert.ok(html.includes('Предложение: не выполняется: заявка отклонена'))
   assert.ok(html.includes('Недостаточно данных о доходах'))
+  const manual = overview({ status: 'DECLINED', officerComment: 'Отказ сотрудника' })
+  assert.ok(manual.html.includes('Отказ сотрудника'))
+  assert.ok(!manual.html.includes('Недостаточно данных о доходах'))
   assert.ok(!html.includes('Предложение для этой заявки пока недоступно'))
   for (const props of renderedSteps) {
     assert.equal(props.activeStep, 3)
@@ -188,7 +206,9 @@ test('choosing conditions does not send a request; confirmation sends only the r
   element = h.render()
   const html = renderToStaticMarkup(element)
   assert.ok(html.includes('Подписание'))
-  for (const value of [offer.amount, offer.termMonths, offer.ratePercent, offer.monthlyPayment]) assert.ok(html.includes(String(value)))
+  for (const value of [offer.amount, offer.termDays, offer.finalRate, offer.monthlyPayment]) assert.ok(html.includes(String(value)))
+  assert.ok(html.includes(`на ${offer.termDays} дней по ставке ${offer.finalRate}%`))
+  assert.ok(!html.includes('мес.'))
   const confirmButton = React.Children.toArray(element.props.children).find((child) => child.type === Button)
   confirmButton.props.onClick()
   confirmButton.props.onClick()

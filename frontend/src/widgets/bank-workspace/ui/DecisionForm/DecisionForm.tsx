@@ -1,10 +1,12 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { Button } from '@alfalab/core-components/button'
 import { Input } from '@alfalab/core-components/input'
+import { Select } from '@alfalab/core-components/select'
 import { Textarea } from '@alfalab/core-components/textarea'
 import { decisionSchema, type Decision } from '../../model/decision'
 import styles from './DecisionForm.module.scss'
 
+/** Officer decision state and the validated submission callback. */
 export interface DecisionFormProps {
   disabled: boolean
   pending: boolean
@@ -17,8 +19,14 @@ const actions = [
   { value: 'DECLINE', label: 'Отказать' },
 ] as const
 
-type Field = 'action' | 'comment' | 'amount' | 'termMonths' | 'ratePercent'
+const termOptions = [30, 60, 90].map((days) => ({
+  key: String(days),
+  content: `${days} дней`,
+}))
 
+type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'finalRate'
+
+/** Validates manual decisions without calculating offer terms in the browser. */
 export function DecisionForm({
   disabled,
   pending,
@@ -26,12 +34,13 @@ export function DecisionForm({
 }: DecisionFormProps) {
   const id = useId()
   const formRef = useRef<HTMLFormElement>(null)
+  const termRef = useRef<HTMLDivElement>(null)
   const [action, setAction] = useState<Decision['action'] | ''>('')
   const [values, setValues] = useState({
     comment: '',
     amount: '',
-    termMonths: '',
-    ratePercent: '',
+    termDays: '',
+    finalRate: '',
   })
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
 
@@ -53,8 +62,8 @@ export function DecisionForm({
           field === 'action' ||
           field === 'comment' ||
           field === 'amount' ||
-          field === 'termMonths' ||
-          field === 'ratePercent'
+          field === 'termDays' ||
+          field === 'finalRate'
         ) {
           nextErrors[field] ??=
             field === 'action' ? 'Выберите решение' : issue.message
@@ -62,7 +71,8 @@ export function DecisionForm({
       }
       setErrors(nextErrors)
       const firstField = Object.keys(nextErrors)[0]
-      if (firstField) {
+      if (firstField === 'termDays') termRef.current?.focus()
+      else if (firstField) {
         formRef.current
           ?.querySelector<HTMLElement>(`[name="${firstField}"]`)
           ?.focus()
@@ -78,8 +88,8 @@ export function DecisionForm({
       <fieldset className={styles.choices} disabled={disabled || pending}>
         <legend className={styles.legend}>Решение сотрудника</legend>
         <p className={styles.note}>
-          Выберите решение самостоятельно. Скоринговая оценка не отправляет
-          решение автоматически.
+          Заявка ожидает ручного решения. Изучите скоринг и выберите действие;
+          выбор будет сохранён только после отправки формы.
         </p>
         {actions.map((option) => (
           <label key={option.value} className={styles.choice}>
@@ -110,7 +120,7 @@ export function DecisionForm({
       {action === 'APPROVE' && (
         <p className={styles.note}>
           Сумма и срок останутся запрошенными. Ставку и платёж рассчитает сервер
-          по правилам прототипа.
+          по правилам продукта.
         </p>
       )}
       {action === 'OFFER_ALTERNATIVE' && (
@@ -123,37 +133,40 @@ export function DecisionForm({
             value={values.amount}
             onChange={(_, { value }) => changeField('amount', value)}
             error={errors.amount}
-            hint="От 10 000 ₽"
+            hint="От 50 000 до 20 000 000 ₽"
             disabled={disabled || pending}
             block
           />
-          <Input
-            name="termMonths"
-            label="Срок, месяцев"
+          <Select
+            ref={termRef}
+            name="termDays"
+            label="Срок, дней"
             labelView="outer"
-            inputMode="numeric"
-            value={values.termMonths}
-            onChange={(_, { value }) => changeField('termMonths', value)}
-            error={errors.termMonths}
-            hint="Целое число от 1 до 120"
+            options={termOptions}
+            selected={values.termDays || null}
+            onChange={({ selected }) =>
+              changeField('termDays', selected?.key ?? '')
+            }
+            error={errors.termDays}
+            hint="30, 60 или 90 дней"
             disabled={disabled || pending}
             block
           />
           <Input
-            name="ratePercent"
-            label="Годовая ставка, %"
+            name="finalRate"
+            label="Итоговая годовая ставка, %"
             labelView="outer"
             inputMode="decimal"
-            value={values.ratePercent}
-            onChange={(_, { value }) => changeField('ratePercent', value)}
-            error={errors.ratePercent}
-            hint="Больше 0, не более 100%"
+            value={values.finalRate}
+            onChange={(_, { value }) => changeField('finalRate', value)}
+            error={errors.finalRate}
+            hint="От 0 до 100% включительно"
             disabled={disabled || pending}
             block
           />
           <p className={styles.note}>
-            Границы суммы, срока и ставки служат проверкой ввода в прототипе, а
-            не кредитной политикой Альфа-Банка.
+            Сумма, срок и итоговая ставка проверяются сервером. Платёж по
+            предложению рассчитает сервер; скоринг здесь не пересчитывается.
           </p>
         </div>
       )}

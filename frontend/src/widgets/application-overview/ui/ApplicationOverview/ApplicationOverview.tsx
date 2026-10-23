@@ -7,6 +7,7 @@ import { ArrowRightMIcon } from '@alfalab/icons/glyph/dist/ArrowRightMIcon'
 import { ClockMIcon } from '@alfalab/icons/glyph/dist/ClockMIcon'
 import { useDashboard } from '@/entities/dashboard'
 import {
+  applicationDecisionLabels,
   applicationStatusLabels,
   getApplicationProgress,
   useApplications,
@@ -40,6 +41,7 @@ export function ApplicationOverview({
     applications.data?.find((item) => item.id === application?.id)
   // Company-wide dashboard offers do not identify their application.
   const offer = applicationView?.offer
+  const scoring = applicationView?.scoring
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const urgentUntil = new Date(today)
@@ -201,6 +203,7 @@ export function ApplicationOverview({
     return <ApplicationForm headingTag="h2" />
   }
 
+  const finalRate = offer?.finalRate ?? application.finalRate
   const stages = getApplicationProgress(application.status)
   const activeStep = stages.findIndex((stage) => stage.state === 'CURRENT') + 1
   const declined = application.status === 'DECLINED'
@@ -258,11 +261,11 @@ export function ApplicationOverview({
       )}
       <div>
         <dt>Предложенный срок</dt>
-        <dd>{offer.termMonths} мес.</dd>
+        <dd>{offer.termDays} дней</dd>
       </div>
       <div>
-        <dt>Ставка</dt>
-        <dd>{offer.ratePercent}% годовых</dd>
+        <dt>Итоговая ставка</dt>
+        <dd>{offer.finalRate}% годовых</dd>
       </div>
       <div>
         <dt>Ежемесячный платёж</dt>
@@ -282,9 +285,10 @@ export function ApplicationOverview({
     },
     OFFER_READY: {
       title:
-        offer &&
-        (offer.amount !== application.amount ||
-          offer.termMonths !== application.termMonths)
+        application.decision === 'ALTERNATIVE_OFFER' ||
+        (offer &&
+          (offer.amount !== application.amount ||
+            offer.termDays !== application.termDays))
           ? 'Банк предложил другие условия'
           : 'Банк подготовил предложение',
       description: canAcceptOffer
@@ -297,8 +301,9 @@ export function ApplicationOverview({
         !providedApplication && applications.isError
           ? applications.error.message
           : !providedApplication && applications.isPending
-            ? 'Загружаем комментарий кредитного специалиста…'
+            ? 'Загружаем причину отказа…'
             : applicationView?.officerComment?.trim() ||
+              applicationView?.aiComment?.trim() ||
               'Причина отказа не указана.',
     },
     ACCEPTED: {
@@ -356,7 +361,7 @@ export function ApplicationOverview({
             </span>
           </Typography.TitleResponsive>
           <Typography.Text tag="p" color="secondary">
-            Запрошенный срок: {application.termMonths} мес.
+            Запрошенный срок: {application.termDays} дней
             {application.purpose && ` · ${application.purpose}`}
           </Typography.Text>
         </div>
@@ -473,7 +478,21 @@ export function ApplicationOverview({
             </div>
             <div>
               <dt>Запрошенный срок</dt>
-              <dd>{application.termMonths} мес.</dd>
+              <dd>{application.termDays} дней</dd>
+            </div>
+            <div>
+              <dt>Базовая ставка</dt>
+              <dd>
+                {application.rate == null
+                  ? 'Не указана'
+                  : `${application.rate}% годовых`}
+              </dd>
+            </div>
+            <div>
+              <dt>Итоговая ставка</dt>
+              <dd>
+                {finalRate == null ? 'Не определена' : `${finalRate}% годовых`}
+              </dd>
             </div>
             <div>
               <dt>Заявка отправлена</dt>
@@ -483,7 +502,68 @@ export function ApplicationOverview({
               <dt>Текущий этап</dt>
               <dd>{applicationStatusLabels[application.status]}</dd>
             </div>
+            <div>
+              <dt>Решение</dt>
+              <dd>
+                {application.decision
+                  ? applicationDecisionLabels[application.decision]
+                  : 'Не указано'}
+              </dd>
+            </div>
+            {applicationView && (
+              <>
+                <div>
+                  <dt>Скоринговый балл</dt>
+                  <dd>
+                    {applicationView.internalScore == null
+                      ? 'Нет оценки'
+                      : `${applicationView.internalScore} / 100`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Класс риска</dt>
+                  <dd>{applicationView.riskClass ?? 'Нет оценки'}</dd>
+                </div>
+              </>
+            )}
           </dl>
+          {scoring && (
+            <>
+              <Typography.TitleResponsive tag="h3" view="small" font="system">
+                Показатели скоринга
+              </Typography.TitleResponsive>
+              <dl className={styles.parameters}>
+                <div>
+                  <dt>Долговая нагрузка (DTI)</dt>
+                  <dd>{scoring.dtiPercent}%</dd>
+                </div>
+                <div>
+                  <dt>Сумма / годовая выручка</dt>
+                  <dd>{scoring.amountToRevenue}</dd>
+                </div>
+                <div>
+                  <dt>Расчётный платёж по базовой ставке</dt>
+                  <dd>
+                    {scoring.newMonthlyPayment == null
+                      ? 'Нет расчёта'
+                      : formatMoney(scoring.newMonthlyPayment)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Расчётный лимит</dt>
+                  <dd>
+                    {scoring.calculatedLimit == null
+                      ? 'Нет расчёта'
+                      : formatMoney(scoring.calculatedLimit)}
+                  </dd>
+                </div>
+              </dl>
+              <Typography.Text tag="p" color="secondary">
+                Скоринг рассчитан сервером для исходной заявки по базовой ставке.
+                Условия предложения указаны отдельно.
+              </Typography.Text>
+            </>
+          )}
           {progressDescription}
           <div inert aria-hidden="true">
             <Steps
@@ -521,11 +601,11 @@ export function ApplicationOverview({
                 Предложение банка
               </Typography.TitleResponsive>
               {offerParameters}
-              {offer && offer.termMonths !== application.termMonths && (
+              {offer && offer.termDays !== application.termDays && (
                 <Typography.Text tag="p" color="secondary">
-                  Срок изменен с {application.termMonths} до {offer.termMonths}{' '}
-                  мес. Платеж по новым условиям указан выше. Платеж по исходному
-                  запросу и полная стоимость кредита не указаны.
+                  Срок изменен с {application.termDays} до {offer.termDays}{' '}
+                  дней. Платеж по новым условиям указан выше. Полная стоимость
+                  кредита не указана.
                 </Typography.Text>
               )}
               {offerState && (

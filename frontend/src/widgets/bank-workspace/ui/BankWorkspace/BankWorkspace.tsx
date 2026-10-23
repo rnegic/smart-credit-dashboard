@@ -3,6 +3,7 @@ import { Button } from '@alfalab/core-components/button'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession, type Session } from '@/entities/session'
 import {
+  applicationDecisionLabels,
   applicationViewSchema,
   applicationViewsSchema,
   applicationStatusLabels,
@@ -21,6 +22,23 @@ interface DecisionVariables {
   userId: UserId
   applicationId: ApplicationView['id']
   decision: Decision
+}
+
+const bkiZoneLabels = { RED: 'Красная', YELLOW: 'Жёлтая', GREEN: 'Зелёная' }
+const revenueTrendLabels = {
+  GROWING: 'Растёт',
+  STABLE: 'Стабильна',
+  DECLINING: 'Снижается',
+}
+const scoringPointLabels: Record<string, string> = {
+  bkiScore: 'Оценка БКИ',
+  delinquencies12m: 'Просрочки за 12 месяцев',
+  inquiries12m: 'Запросы в БКИ за 12 месяцев',
+  revenueTrend: 'Динамика выручки',
+  companyAgeYears: 'Возраст бизнеса',
+  dtiPercent: 'Долговая нагрузка (DTI)',
+  amountToRevenue: 'Сумма / годовая выручка',
+  isDataComplete: 'Полнота данных',
 }
 
 function errorMessage(error: unknown): string {
@@ -110,6 +128,8 @@ export function BankWorkspace() {
   })
 
   const application = detail.data
+  const scoring = application?.scoring
+  const finalRate = application?.offer?.finalRate ?? application?.finalRate
   const currentDecision =
     decision.variables?.userId === userId &&
     decision.variables?.applicationId === selectedId
@@ -167,8 +187,8 @@ export function BankWorkspace() {
         <div className={styles.heading}>
           <h1 id={headingId}>Рабочее место банка</h1>
           <p className={styles.secondary}>
-            Все заявки компаний. Скоринг помогает анализу, решение принимает
-            сотрудник.
+            Все заявки компаний. Сервер принимает решение по правилам скоринга;
+            заявки на ручной проверке рассматривает сотрудник.
           </p>
           {queue && (
             <p>
@@ -238,7 +258,7 @@ export function BankWorkspace() {
                 </div>
                 <div>
                   <dt>Срок</dt>
-                  <dd>{item.termMonths} мес.</dd>
+                  <dd>{item.termDays} дней</dd>
                 </div>
                 <div>
                   <dt>Цель</dt>
@@ -248,6 +268,12 @@ export function BankWorkspace() {
               <div className={styles.queueActions}>
                 <span className={styles.status}>
                   {applicationStatusLabels[item.status]}
+                </span>
+                <span className={styles.secondary}>
+                  Решение:{' '}
+                  {item.decision
+                    ? applicationDecisionLabels[item.decision]
+                    : 'Не указано'}
                 </span>
                 <Button
                   type="button"
@@ -331,7 +357,19 @@ export function BankWorkspace() {
                   </div>
                   <div>
                     <dt>Срок</dt>
-                    <dd>{application.termMonths} мес.</dd>
+                    <dd>{application.termDays} дней</dd>
+                  </div>
+                  <div>
+                    <dt>Базовая годовая ставка</dt>
+                    <dd>
+                      {application.rate == null
+                        ? 'Не указана'
+                        : `${application.rate}%`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Итоговая годовая ставка</dt>
+                    <dd>{finalRate == null ? 'Не определена' : `${finalRate}%`}</dd>
                   </div>
                   <div>
                     <dt>Цель</dt>
@@ -346,39 +384,171 @@ export function BankWorkspace() {
 
               <section
                 className={styles.scoring}
-                aria-label="Оценка риска"
+                aria-label="Скоринг и решение"
               >
-                <h3>Оценка риска</h3>
+                <h3>Скоринг и решение</h3>
                 <p>
                   <strong>
-                    Расчетная оценка риска не заменяет решение кредитного специалиста.
+                    Ручное решение доступно только для заявок на рассмотрении.
                   </strong>
                 </p>
                 <dl className={styles.parameters}>
                   <div>
-                    <dt>Баллы</dt>
+                    <dt>Решение</dt>
                     <dd>
-                      {application.riskScore ?? 'Нет оценки'}
-                      {application.riskScore !== null &&
-                        application.riskScore !== undefined &&
-                        ' / 100'}
+                      {application.decision
+                        ? applicationDecisionLabels[application.decision]
+                        : 'Не указано'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Внутренний скоринговый балл</dt>
+                    <dd>
+                      {application.internalScore == null
+                        ? 'Нет оценки'
+                        : `${application.internalScore} / 100`}
                     </dd>
                   </div>
                   <div>
                     <dt>Класс риска</dt>
                     <dd>{application.riskClass ?? 'Нет оценки'}</dd>
                   </div>
+                  {scoring && (
+                    <>
+                      <div>
+                        <dt>Долговая нагрузка (DTI)</dt>
+                        <dd>{scoring.dtiPercent}%</dd>
+                      </div>
+                      <div>
+                        <dt>Сумма / годовая выручка</dt>
+                        <dd>{scoring.amountToRevenue}</dd>
+                      </div>
+                      <div>
+                        <dt>Расчётный платёж по базовой ставке</dt>
+                        <dd>
+                          {scoring.newMonthlyPayment == null
+                            ? 'Нет расчёта'
+                            : formatMoney(scoring.newMonthlyPayment)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Расчётный лимит</dt>
+                        <dd>
+                          {scoring.calculatedLimit == null
+                            ? 'Нет расчёта'
+                            : formatMoney(scoring.calculatedLimit)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Максимальная сумма продукта</dt>
+                        <dd>{formatMoney(scoring.absoluteMaxAmount)}</dd>
+                      </div>
+                      <div>
+                        <dt>Отраслевой коэффициент лимита</dt>
+                        <dd>{scoring.industryLimitCoef}</dd>
+                      </div>
+                      <div>
+                        <dt>Отраслевая надбавка к ставке</dt>
+                        <dd>{scoring.industryRatePremium} п. п.</dd>
+                      </div>
+                      <div>
+                        <dt>Данные для скоринга</dt>
+                        <dd>
+                          {scoring.isDataComplete
+                            ? 'Полные'
+                            : 'Нужны дополнительные сведения'}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
+                {!scoring && (
+                  <p className={styles.secondary}>
+                    Снимок скоринга не сохранён. Детальные показатели и банковские
+                    данные недоступны.
+                  </p>
+                )}
                 <p className={styles.comment}>
-                  {application.aiComment ?? 'Комментарий скоринга отсутствует.'}
+                  {application.aiComment?.trim() || 'Комментарий скоринга отсутствует.'}
                 </p>
                 <p className={styles.secondary}>
-                  Алгоритм использует сумму цифр ИНН и уменьшает баллы при сумме
-                  свыше 3 млн и сроке свыше 48 месяцев. Финансовая отчётность и
-                  кредитная история не анализируются. Оценка не является
-                  решением сотрудника.
+                  Детерминированный скоринг учитывает оценку БКИ, просрочки и
+                  запросы за 12 месяцев, динамику выручки, возраст бизнеса, DTI,
+                  отношение суммы к годовой выручке и полноту данных. Отрасль
+                  влияет на лимит и надбавку к ставке. Расчёты и решение выполняются
+                  сервером по фиксированным правилам, без ИИ. Показатели скоринга
+                  относятся к исходной заявке и базовой ставке, а платёж предложения
+                  рассчитывается отдельно по итоговой ставке.
                 </p>
               </section>
+
+              {scoring &&
+                (scoring.bkiZone !== null ||
+                  scoring.external !== null ||
+                  scoring.points !== null) && (
+                  <section
+                    className={styles.section}
+                    aria-label="Банковские данные скоринга"
+                  >
+                    <h3>Банковские данные скоринга</h3>
+                    <p className={styles.secondary}>
+                      Эти сведения не отображаются в кабинете клиента. БКИ, ФНС и
+                      реестры в прототипе заменены моками по ИНН, без запросов к
+                      реальным внешним источникам.
+                    </p>
+                    <dl className={styles.parameters}>
+                      {scoring.bkiZone && (
+                        <div>
+                          <dt>Зона БКИ</dt>
+                          <dd>{bkiZoneLabels[scoring.bkiZone]}</dd>
+                        </div>
+                      )}
+                      {scoring.external && (
+                        <>
+                          <div>
+                            <dt>Оценка БКИ</dt>
+                            <dd>{scoring.external.bkiScore}</dd>
+                          </div>
+                          <div>
+                            <dt>Просрочки за 12 месяцев</dt>
+                            <dd>{scoring.external.delinquencies12m}</dd>
+                          </div>
+                          <div>
+                            <dt>Запросы в БКИ за 12 месяцев</dt>
+                            <dd>{scoring.external.inquiries12m}</dd>
+                          </div>
+                          <div>
+                            <dt>Активные кредиты по данным БКИ</dt>
+                            <dd>{scoring.external.activeLoans}</dd>
+                          </div>
+                          <div>
+                            <dt>Динамика выручки</dt>
+                            <dd>
+                              {revenueTrendLabels[scoring.external.revenueTrend]}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Возраст бизнеса, лет</dt>
+                            <dd>{scoring.external.companyAgeYears}</dd>
+                          </div>
+                        </>
+                      )}
+                    </dl>
+                    {scoring.points && Object.keys(scoring.points).length > 0 && (
+                      <>
+                        <h3>Баллы по критериям</h3>
+                        <dl className={styles.parameters}>
+                          {Object.entries(scoring.points).map(([criterion, points]) => (
+                            <div key={criterion}>
+                              <dt>{scoringPointLabels[criterion] ?? 'Другой критерий'}</dt>
+                              <dd>{points}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </>
+                    )}
+                  </section>
+                )}
 
               {application.officerComment && (
                 <section
@@ -402,11 +572,11 @@ export function BankWorkspace() {
                     </div>
                     <div>
                       <dt>Срок</dt>
-                      <dd>{application.offer.termMonths} мес.</dd>
+                      <dd>{application.offer.termDays} дней</dd>
                     </div>
                     <div>
-                      <dt>Годовая ставка</dt>
-                      <dd>{application.offer.ratePercent}%</dd>
+                      <dt>Итоговая годовая ставка</dt>
+                      <dd>{application.offer.finalRate}%</dd>
                     </div>
                     <div>
                       <dt>Платёж в месяц</dt>
