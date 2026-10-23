@@ -13,28 +13,45 @@ const decimalSchema = z
   .regex(/^\d+(?:[.,]\d+)?$/, 'Введите число без пробелов')
   .transform((value) => Number(value.replace(',', '.')))
 
+const optionalInputSchema = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => (value === '' ? undefined : value))
+
 export const decisionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('APPROVE'), comment: commentSchema }),
   z.object({ action: z.literal('DECLINE'), comment: commentSchema }),
   z.object({
     action: z.literal('OFFER_ALTERNATIVE'),
     comment: commentSchema,
-    amount: decimalSchema.pipe(
-      z
-        .number()
-        .min(50_000, 'Минимальная сумма 50 000 ₽')
-        .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
+    amount: optionalInputSchema.pipe(
+      decimalSchema
+        .pipe(
+          z
+            .number()
+            .min(50_000, 'Минимальная сумма 50 000 ₽')
+            .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
+        )
+        .optional(),
     ),
-    termDays: z
-      .enum(['30', '60', '90'], {
-        error: 'Выберите срок 30, 60 или 90 дней',
-      })
-      .transform(Number),
-    finalRate: decimalSchema.pipe(
+    termDays: optionalInputSchema.pipe(
       z
-        .number()
-        .min(0, 'Ставка не может быть отрицательной')
-        .max(100, 'Ставка не более 100%'),
+        .enum(['30', '60', '90'], {
+          error: 'Выберите срок 30, 60 или 90 дней',
+        })
+        .transform(Number)
+        .optional(),
+    ),
+    finalRate: optionalInputSchema.pipe(
+      decimalSchema
+        .pipe(
+          z
+            .number()
+            .min(0, 'Ставка не может быть отрицательной')
+            .max(100, 'Ставка не более 100%'),
+        )
+        .optional(),
     ),
   }),
 ])
