@@ -30,14 +30,15 @@ export const applicationFormSchema = z.object({
   step1_financingParameters: z.object({
     businessTask: optionalTextSchema,
     amount: optionalNumberSchema,
-    termMonths: z.number().int().nullable(),
+    termDays: z.number().int().nullable(),
+    rate: optionalNumberSchema.optional(),
     purpose: optionalTextSchema,
   }),
   step2_businessData: z.object({
     applicant: applicationApplicantSchema,
     financials: z.object({
       monthlyRevenue: optionalNumberSchema,
-      existingMonthlyDebtPayment: optionalNumberSchema,
+      existingDebt: optionalNumberSchema,
     }),
   }),
   prefilled: z
@@ -72,17 +73,25 @@ export const prefillResponseSchema = z.object({
 export const applicationFormSubmissionSchema = applicationFormSchema.extend({
   step1_financingParameters: z.object({
     businessTask: z.string().trim().min(1, 'Опишите бизнес-задачу').max(500),
-    amount: z.number().min(10_000, 'Минимальная сумма 10 000 ₽'),
-    termMonths: z.number().int().min(1).max(120),
+    amount: z
+      .number()
+      .min(50_000, 'Минимальная сумма 50 000 ₽')
+      .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
+    termDays: z.union([z.literal(30), z.literal(60), z.literal(90)], {
+      error: 'Выберите срок 30, 60 или 90 дней',
+    }),
     purpose: z.string().trim().min(1, 'Укажите цель финансирования').max(100),
   }),
   step2_businessData: z.object({
     applicant: applicationApplicantSchema,
     financials: z.object({
-      monthlyRevenue: z.number().min(1, 'Укажите среднемесячную выручку'),
-      existingMonthlyDebtPayment: z
+      monthlyRevenue: z
         .number()
-        .min(0, 'Платеж не может быть отрицательным'),
+        .positive('Среднемесячная выручка должна быть больше 0 ₽'),
+      existingDebt: z
+        .number()
+        .min(0, 'Задолженность не может быть отрицательной')
+        .default(0),
     }),
   }),
   step3_verification: z.object({
@@ -107,11 +116,22 @@ export type ApplicationFormSubmission = z.infer<
 >
 export type PrefillResponse = z.infer<typeof prefillResponseSchema>
 
+/** Drop obsolete annotations from persisted drafts without converting values. */
+export const applicationDraftPathsSchema = z
+  .array(z.string())
+  .transform((paths) =>
+    paths.filter(
+      (path) =>
+        path !== 'step1_financingParameters.termMonths' &&
+        path !== 'step2_businessData.financials.existingMonthlyDebtPayment',
+    ),
+  )
+
 export const applicationDraftSchema = z.object({
   form: applicationFormSchema,
   currentStep: z.number().int().min(0).max(3),
-  aiFilled: z.array(z.string()),
-  missingFields: z.array(z.string()),
+  aiFilled: applicationDraftPathsSchema,
+  missingFields: applicationDraftPathsSchema,
   revision: z.number().int().nonnegative(),
   updatedAt: z.iso.datetime({ offset: true }),
 })
