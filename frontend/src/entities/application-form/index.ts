@@ -4,6 +4,8 @@ import { apiOptionalRequest, useApiScope } from '@/shared/api'
 
 const optionalTextSchema = z.string().nullable()
 const optionalNumberSchema = z.number().nullable()
+const requiredText = (message: string) =>
+  z.string({ error: message }).trim().min(1, message)
 
 export const applicationApplicantSchema = z.object({
   type: optionalTextSchema,
@@ -70,6 +72,65 @@ export const prefillResponseSchema = z.object({
   missingFields: z.array(z.string()),
 })
 
+/** Bank form data may be incomplete in historical applications. */
+export const applicationBusinessSummarySchema = z
+  .object({
+    step2_businessData: z
+      .object({
+        applicant: applicationApplicantSchema
+          .pick({ registrationDate: true, mainOkved: true })
+          .partial()
+          .nullish(),
+        financials:
+          applicationFormSchema.shape.step2_businessData.shape.financials
+            .pick({ monthlyRevenue: true })
+            .partial()
+            .nullish(),
+      })
+      .nullish(),
+  })
+  .nullable()
+
+/** Required submission fields; incoming forms and drafts may remain incomplete. */
+export const applicationApplicantSubmissionSchema =
+  applicationApplicantSchema.extend({
+    type: requiredText('Укажите форму бизнеса'),
+    companyName: requiredText('Укажите название'),
+    inn: requiredText('Укажите ИНН').regex(
+      /^\d{12}$/,
+      'ИНН ИП должен содержать 12 цифр',
+    ),
+    taxSystem: requiredText('Выберите систему налогообложения'),
+    firstName: requiredText('Укажите фамилию и имя предпринимателя'),
+    lastName: requiredText('Укажите фамилию и имя предпринимателя'),
+    ogrnip: requiredText('Укажите ОГРНИП').regex(
+      /^\d{15}$/,
+      'ОГРНИП должен содержать 15 цифр',
+    ),
+    registrationDate: z.iso
+      .date({ error: 'Укажите дату регистрации в формате ДД.ММ.ГГГГ' })
+      .refine(
+        (value) => new Date(`${value}T00:00:00`) <= new Date(),
+        'Дата регистрации не может быть в будущем',
+      ),
+    mainOkved: requiredText('Укажите основной ОКВЭД').regex(
+      /^\d{2}(?:\.\d{1,2}){0,2}$/,
+      'Укажите код ОКВЭД, например 47.11',
+    ),
+    industry: requiredText('Выберите группу отраслей'),
+    registrationAddress: requiredText('Укажите адрес регистрации'),
+    phone: requiredText('Укажите телефон').refine(
+      (value) =>
+        /^\+?[\d\s()-]+$/.test(value) &&
+        value.replace(/\D/g, '').length >= 10 &&
+        value.replace(/\D/g, '').length <= 15,
+      'Укажите телефон: от 10 до 15 цифр',
+    ),
+    email: requiredText('Укажите email').pipe(
+      z.email({ error: 'Укажите корректный email' }),
+    ),
+  })
+
 export const applicationFormSubmissionSchema = applicationFormSchema.extend({
   step1_financingParameters: z.object({
     businessTask: z.string().trim().min(1, 'Опишите бизнес-задачу').max(500),
@@ -83,15 +144,12 @@ export const applicationFormSubmissionSchema = applicationFormSchema.extend({
     purpose: z.string().trim().min(1, 'Укажите цель финансирования').max(100),
   }),
   step2_businessData: z.object({
-    applicant: applicationApplicantSchema,
+    applicant: applicationApplicantSubmissionSchema,
     financials: z.object({
       monthlyRevenue: z
         .number()
         .positive('Среднемесячная выручка должна быть больше 0 ₽'),
-      existingDebt: z
-        .number()
-        .min(0, 'Задолженность не может быть отрицательной')
-        .default(0),
+      existingDebt: z.number().min(0, 'Платеж не может быть отрицательным'),
     }),
   }),
   step3_verification: z.object({

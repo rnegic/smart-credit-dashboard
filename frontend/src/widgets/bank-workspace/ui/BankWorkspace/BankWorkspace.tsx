@@ -2,6 +2,8 @@ import { useId, useRef, useState } from 'react'
 import { Button } from '@alfalab/core-components/button'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSession, type Session } from '@/entities/session'
+import { applicationBusinessSummarySchema } from '@/entities/application-form'
+import { getCompanyAge, getIndustryGroup } from '@/entities/company'
 import {
   applicationDecisionLabels,
   applicationViewSchema,
@@ -89,6 +91,23 @@ export function BankWorkspace() {
     retry: false,
   })
 
+  const applicationForm = useQuery({
+    queryKey: ['bank', userId, 'applications', selectedId, 'form'],
+    queryFn: ({ signal }) =>
+      apiRequest(
+        `/api/bank/applications/${selectedId}/form`,
+        applicationBusinessSummarySchema,
+        { signal },
+      ),
+    enabled:
+      session.data?.role === 'BANK_OFFICER' &&
+      !session.isError &&
+      selectedId !== undefined,
+    staleTime: 5 * 60_000,
+    gcTime: 5 * 60_000,
+    retry: false,
+  })
+
   const decision = useMutation({
     mutationFn: ({ applicationId, decision: body }: DecisionVariables) =>
       apiRequest(
@@ -130,6 +149,27 @@ export function BankWorkspace() {
   const application = detail.data
   const scoring = application?.scoring
   const finalRate = application?.offer?.finalRate ?? application?.finalRate
+  const businessData = applicationForm.data?.step2_businessData
+  const monthlyRevenue = businessData?.financials?.monthlyRevenue
+  const registrationDate = businessData?.applicant?.registrationDate
+  const industryGroup = getIndustryGroup(businessData?.applicant?.mainOkved)
+  const exactAge = application
+    ? getCompanyAge(registrationDate, application.createdAt)
+    : null
+  const scoreAge = scoring?.external?.companyAgeYears
+  const companyAge =
+    exactAge ??
+    (registrationDate
+      ? 'Проверьте дату регистрации'
+      : scoreAge == null
+        ? 'Дата регистрации не передана'
+        : scoreAge === 0
+          ? 'Меньше года, точная дата не передана'
+          : `${new Intl.NumberFormat('ru-RU', {
+              style: 'unit',
+              unit: 'year',
+              unitDisplay: 'long',
+            }).format(scoreAge)} (по данным скоринга)`)
   const currentDecision =
     decision.variables?.userId === userId &&
     decision.variables?.applicationId === selectedId
@@ -246,7 +286,10 @@ export function BankWorkspace() {
                   · ИНН {item.inn}
                 </span>
                 <span className={styles.secondary}>
-                  {formatDate(item.createdAt)}
+                  Создана:{' '}
+                  <time dateTime={item.createdAt}>
+                    {formatDate(item.createdAt)}
+                  </time>
                 </span>
               </div>
               <dl className={styles.request}>
@@ -336,6 +379,57 @@ export function BankWorkspace() {
                 <span className={styles.status}>
                   {applicationStatusLabels[application.status]}
                 </span>
+                <dl
+                  className={styles.businessFacts}
+                  aria-label="Ключевые показатели бизнеса"
+                >
+                  <div>
+                    <dt>Среднемесячная выручка</dt>
+                    <dd>
+                      {applicationForm.isPending
+                        ? 'Загружаем…'
+                        : monthlyRevenue == null
+                          ? 'Не указана'
+                          : formatMoney(monthlyRevenue)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Возраст компании на дату заявки</dt>
+                    <dd>
+                      {applicationForm.isPending ? 'Загружаем…' : companyAge}
+                    </dd>
+                  </div>
+                </dl>
+                {applicationForm.isError && (
+                  <div className={styles.secondary} role="status">
+                    {applicationForm.error instanceof ApiError &&
+                    applicationForm.error.status === 404 ? (
+                      <p>
+                        Анкета этой заявки не сохранена. Выручка и точная дата
+                        регистрации недоступны, в том числе для старых
+                        демо-заявок.
+                      </p>
+                    ) : (
+                      <>
+                        <p>
+                          Не удалось загрузить данные бизнеса:{' '}
+                          {errorMessage(applicationForm.error)}
+                        </p>
+                        <Button
+                          type="button"
+                          view="text"
+                          size={32}
+                          loading={applicationForm.isFetching}
+                          onClick={() => {
+                            void applicationForm.refetch()
+                          }}
+                        >
+                          Повторить загрузку анкеты
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
                 <dl className={styles.parameters}>
                   <div>
                     <dt>ИНН</dt>
@@ -369,7 +463,9 @@ export function BankWorkspace() {
                   </div>
                   <div>
                     <dt>Итоговая годовая ставка</dt>
-                    <dd>{finalRate == null ? 'Не определена' : `${finalRate}%`}</dd>
+                    <dd>
+                      {finalRate == null ? 'Не определена' : `${finalRate}%`}
+                    </dd>
                   </div>
                   <div>
                     <dt>Цель</dt>
@@ -378,6 +474,18 @@ export function BankWorkspace() {
                   <div>
                     <dt>Создана</dt>
                     <dd>{formatDate(application.createdAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Дата регистрации компании</dt>
+                    <dd>
+                      {registrationDate
+                        ? formatDate(registrationDate)
+                        : 'Не передана'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Группа отраслей (ОКВЭД)</dt>
+                    <dd>{industryGroup?.label ?? 'ОКВЭД не передан'}</dd>
                   </div>
                 </dl>
               </section>
@@ -464,21 +572,23 @@ export function BankWorkspace() {
                 </dl>
                 {!scoring && (
                   <p className={styles.secondary}>
-                    Снимок скоринга не сохранён. Детальные показатели и банковские
-                    данные недоступны.
+                    Снимок скоринга не сохранён. Детальные показатели и
+                    банковские данные недоступны.
                   </p>
                 )}
                 <p className={styles.comment}>
-                  {application.aiComment?.trim() || 'Комментарий скоринга отсутствует.'}
+                  {application.aiComment?.trim() ||
+                    'Комментарий скоринга отсутствует.'}
                 </p>
                 <p className={styles.secondary}>
                   Детерминированный скоринг учитывает оценку БКИ, просрочки и
                   запросы за 12 месяцев, динамику выручки, возраст бизнеса, DTI,
                   отношение суммы к годовой выручке и полноту данных. Отрасль
-                  влияет на лимит и надбавку к ставке. Расчёты и решение выполняются
-                  сервером по фиксированным правилам, без ИИ. Показатели скоринга
-                  относятся к исходной заявке и базовой ставке, а платёж предложения
-                  рассчитывается отдельно по итоговой ставке.
+                  влияет на лимит и надбавку к ставке. Расчёты и решение
+                  выполняются сервером по фиксированным правилам, без ИИ.
+                  Показатели скоринга относятся к исходной заявке и базовой
+                  ставке, а платёж предложения рассчитывается отдельно по
+                  итоговой ставке.
                 </p>
               </section>
 
@@ -492,9 +602,9 @@ export function BankWorkspace() {
                   >
                     <h3>Банковские данные скоринга</h3>
                     <p className={styles.secondary}>
-                      Эти сведения не отображаются в кабинете клиента. БКИ, ФНС и
-                      реестры в прототипе заменены моками по ИНН, без запросов к
-                      реальным внешним источникам.
+                      Эти сведения не отображаются в кабинете клиента. БКИ, ФНС
+                      и реестры в прототипе заменены моками по ИНН, без запросов
+                      к реальным внешним источникам.
                     </p>
                     <dl className={styles.parameters}>
                       {scoring.bkiZone && (
@@ -524,29 +634,39 @@ export function BankWorkspace() {
                           <div>
                             <dt>Динамика выручки</dt>
                             <dd>
-                              {revenueTrendLabels[scoring.external.revenueTrend]}
+                              {
+                                revenueTrendLabels[
+                                  scoring.external.revenueTrend
+                                ]
+                              }
                             </dd>
                           </div>
                           <div>
-                            <dt>Возраст бизнеса, лет</dt>
+                            <dt>Полных лет бизнеса в расчёте скоринга</dt>
                             <dd>{scoring.external.companyAgeYears}</dd>
                           </div>
                         </>
                       )}
                     </dl>
-                    {scoring.points && Object.keys(scoring.points).length > 0 && (
-                      <>
-                        <h3>Баллы по критериям</h3>
-                        <dl className={styles.parameters}>
-                          {Object.entries(scoring.points).map(([criterion, points]) => (
-                            <div key={criterion}>
-                              <dt>{scoringPointLabels[criterion] ?? 'Другой критерий'}</dt>
-                              <dd>{points}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </>
-                    )}
+                    {scoring.points &&
+                      Object.keys(scoring.points).length > 0 && (
+                        <>
+                          <h3>Баллы по критериям</h3>
+                          <dl className={styles.parameters}>
+                            {Object.entries(scoring.points).map(
+                              ([criterion, points]) => (
+                                <div key={criterion}>
+                                  <dt>
+                                    {scoringPointLabels[criterion] ??
+                                      'Другой критерий'}
+                                  </dt>
+                                  <dd>{points}</dd>
+                                </div>
+                              ),
+                            )}
+                          </dl>
+                        </>
+                      )}
                   </section>
                 )}
 
@@ -606,6 +726,7 @@ export function BankWorkspace() {
               {application.status === 'IN_REVIEW' ? (
                 <DecisionForm
                   key={`${userId}:${selectedId}`}
+                  application={application}
                   pending={pending}
                   disabled={locked || detail.isFetching || detail.isError}
                   onSubmit={submitDecision}

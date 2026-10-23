@@ -3,6 +3,7 @@ import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Checkbox } from '@alfalab/core-components/checkbox'
 import { Button } from '@alfalab/core-components/button'
+import { getIndustryGroup, industryGroups } from '@/entities/company'
 import { FieldLabel } from '@/shared/ui'
 import styles from './IpApplicationFields.module.scss'
 
@@ -60,7 +61,6 @@ type TextField = {
   type?: ComponentProps<typeof Input>['type']
   inputMode?: 'numeric' | 'decimal'
   wide?: boolean
-  required?: boolean
 }
 
 const businessFields: TextField[] = [
@@ -68,29 +68,25 @@ const businessFields: TextField[] = [
     name: 'companyName',
     label: 'Название',
     hint: 'Полное название ИП',
-    required: true,
   },
   {
     name: 'inn',
     label: 'ИНН',
     hint: '12 цифр, из свидетельства ИП',
     inputMode: 'numeric',
-    required: true,
   },
-  { name: 'legalForm', label: 'Форма бизнеса', required: true },
+  { name: 'legalForm', label: 'Форма бизнеса' },
   {
     name: 'monthlyRevenue',
     label: 'Среднемесячная выручка, ₽',
     hint: 'Примерно, за последние 6 месяцев',
     inputMode: 'decimal',
     placeholder: 'Укажите среднюю выручку',
-    required: true,
   },
   {
     name: 'existingDebt',
-    label: 'Задолженность по действующим кредитам, ₽',
-    hint:
-      'Общий остаток долга, не ежемесячный платеж. Если кредитов нет, оставьте 0.',
+    label: 'Ежемесячный платеж по кредитам, ₽',
+    hint: 'Сумма ежемесячных платежей по действующим кредитам. Если кредитов нет, оставьте 0.',
     inputMode: 'decimal',
   },
 ]
@@ -118,7 +114,7 @@ const registrationFields: TextField[] = [
   {
     name: 'okved',
     label: 'Основной ОКВЭД',
-    hint: 'Код основного вида деятельности из ЕГРИП',
+    hint: 'Точный код из ЕГРИП. Группа отраслей определяется по первым двум цифрам.',
     placeholder: 'Например, 47.11',
   },
   {
@@ -150,11 +146,17 @@ const taxOptions = [
   { key: 'AUSN', content: 'АУСН' },
   { key: 'NPD', content: 'НПД' },
 ]
+const industryOptions = industryGroups.map(({ key, label }) => ({
+  key,
+  content: label,
+}))
 
 const aiPaths: Partial<Record<TextFieldName | 'taxSystem', string>> = {
   taxSystem: 'step2_businessData.applicant.taxSystem',
   monthlyRevenue: 'step2_businessData.financials.monthlyRevenue',
   existingDebt: 'step2_businessData.financials.existingDebt',
+  phone: 'step2_businessData.applicant.phone',
+  email: 'step2_businessData.applicant.email',
 }
 
 export function IpApplicationFields({
@@ -248,7 +250,7 @@ export function IpApplicationFields({
                         : undefined
                 }
                 inputMode={field.inputMode}
-                required={field.required}
+                required
                 maxLength={
                   field.name === 'inn'
                     ? 12
@@ -266,7 +268,15 @@ export function IpApplicationFields({
                     : undefined)
                 }
                 onChange={(_, { value: next }) =>
-                  onChange({ [field.name]: next })
+                  onChange(
+                    field.name === 'okved'
+                      ? {
+                          okved: next,
+                          industry:
+                            getIndustryGroup(next)?.key ?? value.industry,
+                        }
+                      : { [field.name]: next },
+                  )
                 }
               />
               {hasAiPath(aiFilled, field.name) && (
@@ -275,19 +285,17 @@ export function IpApplicationFields({
             </div>
             {section === 'business' && field.name === 'legalForm' && (
               <div>
-                <FieldLabel
-                  htmlFor={`${id}-taxSystem`}
-                  text="Система налогообложения"
-                  hint="Влияет на продукт"
-                />
                 <Select
                   id={`${id}-taxSystem`}
                   name="taxSystem"
+                  label="Система налогообложения"
+                  labelView="outer"
+                  hint="Влияет на продукт"
                   block
                   size={48}
                   options={taxOptions}
                   selected={value.taxSystem || null}
-                  fieldProps={{ 'aria-label': 'Система налогообложения' }}
+                  fieldProps={{ 'aria-required': true }}
                   placeholder="Выберите систему налогообложения"
                   error={errors.taxSystem}
                   onChange={({ selected }) =>
@@ -297,6 +305,34 @@ export function IpApplicationFields({
                 {aiFilled.has(aiPaths.taxSystem ?? '') && (
                   <p className={styles.aiNote}>Заполнено ИИ, проверьте</p>
                 )}
+              </div>
+            )}
+            {section === 'registration' && field.name === 'okved' && (
+              <div>
+                <Select
+                  id={`${id}-industry`}
+                  name="industry"
+                  label="Группа отраслей (ОКВЭД)"
+                  labelView="outer"
+                  block
+                  size={48}
+                  options={industryOptions}
+                  selected={value.industry || null}
+                  fieldProps={{ 'aria-required': true }}
+                  placeholder="Выберите группу отраслей"
+                  hint="Выберите диапазон и укажите точный код ОКВЭД. Остальные коды относятся к группе «По умолчанию»."
+                  error={errors.industry}
+                  onChange={({ selected }) => {
+                    const industry = selected?.key ?? ''
+                    onChange({
+                      industry,
+                      okved:
+                        getIndustryGroup(value.okved)?.key === industry
+                          ? value.okved
+                          : '',
+                    })
+                  }}
+                />
               </div>
             )}
           </Fragment>
