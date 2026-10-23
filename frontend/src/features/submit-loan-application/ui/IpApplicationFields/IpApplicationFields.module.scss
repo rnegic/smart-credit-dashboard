@@ -5,6 +5,7 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--gap-16);
 }
 .grid > div {
@@ -12,6 +13,22 @@
   gap: var(--gap-8);
   min-inline-size: 0;
   align-content: start;
+}
+.grid > .pairedField {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  align-self: stretch;
+}
+.pairedLabel {
+  display: grid;
+}
+.controlLabel {
+  position: absolute;
+  inline-size: var(--gap-2);
+  block-size: var(--gap-2);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .wide {
   grid-column: 1 / -1;
@@ -65,5 +82,10 @@
 @media (max-width: 47.99rem) {
   .grid {
     grid-template-columns: 1fr;
+  }
+  .grid > .pairedField {
+    grid-row: auto;
+    grid-template-rows: none;
+    align-self: start;
   }
 }

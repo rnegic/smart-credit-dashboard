@@ -19,6 +19,7 @@ export interface IpApplicationData {
   fnsRequest: boolean
   fullName: string
   ogrnip: string
+  /** Registry metadata retained in drafts and requests, not an editable field. */
   registrationDate: string
   okved: string
   registrationAddress: string
@@ -47,7 +48,6 @@ type TextFieldName =
   | 'existingDebt'
   | 'fullName'
   | 'ogrnip'
-  | 'registrationDate'
   | 'okved'
   | 'registrationAddress'
   | 'phone'
@@ -103,13 +103,7 @@ const registrationFields: TextField[] = [
     hint: '15 цифр, из Единого государственного реестра индивидуальных предпринимателей',
     inputMode: 'numeric',
     placeholder: 'Номер регистрации ИП',
-  },
-  {
-    name: 'registrationDate',
-    label: 'Дата регистрации ИП',
-    hint: 'Дата государственной регистрации предпринимателя',
-    inputMode: 'numeric',
-    placeholder: 'ДД.ММ.ГГГГ',
+    wide: true,
   },
   {
     name: 'okved',
@@ -227,7 +221,15 @@ export function IpApplicationFields({
       <div className={styles.grid}>
         {fields.map((field) => (
           <Fragment key={field.name}>
-            <div className={field.wide ? styles.wide : undefined}>
+            <div
+              className={
+                field.wide
+                  ? styles.wide
+                  : field.name === 'legalForm'
+                    ? styles.pairedField
+                    : undefined
+              }
+            >
               <FieldLabel
                 htmlFor={`${id}-${field.name}`}
                 text={field.label}
@@ -280,22 +282,37 @@ export function IpApplicationFields({
                 }
               />
               {hasAiPath(aiFilled, field.name) && (
-                <p className={styles.aiNote}>Заполнено ИИ, проверьте</p>
+                <p className={styles.aiNote}>
+                  Заполнено автоматически, проверьте
+                </p>
               )}
             </div>
             {section === 'business' && field.name === 'legalForm' && (
-              <div>
+              <div className={styles.pairedField}>
+                <div className={styles.pairedLabel}>
+                  <FieldLabel
+                    htmlFor={`${id}-taxSystem-input`}
+                    text="Система налогообложения"
+                    hint="Режим, по которому ИП платит налоги: например, УСН или ОСНО. Свой режим можно проверить в личном кабинете ИП на сайте ФНС."
+                  />
+                  <span
+                    id={`${id}-taxSystem-label`}
+                    className={styles.controlLabel}
+                  >
+                    Система налогообложения
+                  </span>
+                </div>
                 <Select
                   id={`${id}-taxSystem`}
                   name="taxSystem"
-                  label="Система налогообложения"
-                  labelView="outer"
-                  hint="Влияет на продукт"
                   block
                   size={48}
                   options={taxOptions}
                   selected={value.taxSystem || null}
-                  fieldProps={{ 'aria-required': true }}
+                  fieldProps={{
+                    'aria-required': true,
+                    'aria-label': 'Система налогообложения',
+                  }}
                   placeholder="Выберите систему налогообложения"
                   error={errors.taxSystem}
                   onChange={({ selected }) =>
@@ -303,24 +320,31 @@ export function IpApplicationFields({
                   }
                 />
                 {aiFilled.has(aiPaths.taxSystem ?? '') && (
-                  <p className={styles.aiNote}>Заполнено ИИ, проверьте</p>
+                  <p className={styles.aiNote}>
+                    Заполнено автоматически, проверьте
+                  </p>
                 )}
               </div>
             )}
             {section === 'registration' && field.name === 'okved' && (
               <div>
+                <FieldLabel
+                  htmlFor={`${id}-industry`}
+                  text="Группа отраслей (ОКВЭД)"
+                  hint="Выберите диапазон и укажите точный код ОКВЭД. Остальные коды относятся к группе «По умолчанию»."
+                />
                 <Select
                   id={`${id}-industry`}
                   name="industry"
-                  label="Группа отраслей (ОКВЭД)"
-                  labelView="outer"
                   block
                   size={48}
                   options={industryOptions}
                   selected={value.industry || null}
-                  fieldProps={{ 'aria-required': true }}
+                  fieldProps={{
+                    'aria-required': true,
+                    'aria-label': 'Группа отраслей (ОКВЭД)',
+                  }}
                   placeholder="Выберите группу отраслей"
-                  hint="Выберите диапазон и укажите точный код ОКВЭД. Остальные коды относятся к группе «По умолчанию»."
                   error={errors.industry}
                   onChange={({ selected }) => {
                     const industry = selected?.key ?? ''
