@@ -8,6 +8,8 @@ import alfa.smartcredit.model.Company;
 import alfa.smartcredit.model.CreditApplication;
 import alfa.smartcredit.model.Offer;
 import alfa.smartcredit.model.enums.ApplicationStatus;
+import alfa.smartcredit.model.enums.DecisionStatus;
+import alfa.smartcredit.model.enums.RiskClass;
 import alfa.smartcredit.model.enums.OfferStatus;
 import alfa.smartcredit.repository.ApplicationDraftRepository;
 import alfa.smartcredit.repository.CompanyRepository;
@@ -22,7 +24,6 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,7 @@ public class ApplicationService {
     private final CompanyRepository companyRepository;
     private final OfferRepository offerRepository;
     private final ScoringService scoringService;
+    private final DecisionEngine decisionEngine;
     private final ObjectMapper mapper;
 
     @Transactional
@@ -55,19 +57,38 @@ public class ApplicationService {
         var s1 = form.step1();
         var fin = form.step2().financials();
 
+        // 1) скоринг (Группы 2-3 ТЗ) и 2) итоговое решение (DecisionEngine)
+        ScoringService.Result r = scoringService.score(company, form);
+        DecisionEngine.Decision d = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r);
+        if (d.status() == DecisionStatus.INFO_REQUIRED)
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INFO_REQUIRED", d.reason());
+
         CreditApplication a = new CreditApplication();
         a.setCompanyId(companyId);
         a.setAmount(s1.amount());
-        a.setTermMonths(s1.termMonths());
+        a.setTermDays(s1.termDays());
+        a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));   // legacy-колонка NOT NULL
+        a.setRate(r.rate());
         a.setPurpose(s1.purpose());
         a.setBusinessTask(s1.businessTask());
-        a.setStatus(ApplicationStatus.IN_REVIEW);
 
-        ScoringService.Result r = scoringService.score(company, form);
-        a.setRiskScore(r.score());
-        a.setRiskClass(r.riskClass());
-        a.setAiComment(r.comment());
+        a.setRiskScore(r.internalScore());
+        a.setRiskClass(r.riskClass().name());
+        a.setCalculatedLimit(r.calculatedLimit());
+        a.setScoringData(mapper.valueToTree(r));
+        a.setDecision(d.status());
+        a.setFinalRate(d.finalRate());
+        a.setAiComment(d.reason());
+        a.setStatus(switch (d.status()) {
+            case DECLINED -> ApplicationStatus.DECLINED;
+            case APPROVED, ALTERNATIVE_OFFER -> ApplicationStatus.OFFER_READY;
+            case MANUAL_REVIEW, INFO_REQUIRED -> ApplicationStatus.IN_REVIEW;
+        });
         a = applicationRepository.save(a);
+
+        // APPROVED / ALTERNATIVE_OFFER: сразу формируем предложение клиенту
+        if (d.status() == DecisionStatus.APPROVED || d.status() == DecisionStatus.ALTERNATIVE_OFFER)
+            createOffer(a, d.amount(), s1.termDays(), d.finalRate());
 
         // сохраняем форму целиком, но личность заявителя берём у сервера, не у клиента
         ObjectNode tree = mapper.valueToTree(form);
@@ -78,7 +99,7 @@ public class ApplicationService {
         applicationRepository.saveAndFlush(a);
         draftRepository.deleteByCompanyId(companyId);
 
-        return toView(a, company);
+        return toView(a, company, false);
     }
 
     @Transactional(readOnly = true)
@@ -93,7 +114,7 @@ public class ApplicationService {
         Company c = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
         return applicationRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(a -> a.getCompanyId().equals(companyId))
-                .map(a -> toView(a, c)).toList();
+                .map(a -> toView(a, c, false)).toList();
     }
 
     @Transactional(readOnly = true)
@@ -101,13 +122,13 @@ public class ApplicationService {
         Map<Long, Company> companies = companyRepository.findAll().stream()
                 .collect(Collectors.toMap(Company::getId, Function.identity()));
         return applicationRepository.findAllByOrderByCreatedAtDesc().stream()
-                .map(a -> toView(a, companies.get(a.getCompanyId()))).toList();
+                .map(a -> toView(a, companies.get(a.getCompanyId()), true)).toList();
     }
 
     @Transactional(readOnly = true)
     public ApplicationView getForBank(Long id) {
         CreditApplication a = find(id);
-        return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow());
+        return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow(), true);
     }
 
     @Transactional
@@ -120,18 +141,26 @@ public class ApplicationService {
         switch (req.action()) {
             case DECLINE -> a.setStatus(ApplicationStatus.DECLINED);
             case APPROVE -> {
-                createOffer(a, a.getAmount(), a.getTermMonths(), rateByClass(a.getRiskClass()));
+                int termDays = termDaysOf(a);
+                BigDecimal finalRate = a.getFinalRate() != null ? a.getFinalRate() : manualFinalRate(a, termDays);
+                createOffer(a, a.getAmount(), termDays, finalRate);
+                a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
             case OFFER_ALTERNATIVE -> {
-                if (req.amount() == null || req.termMonths() == null || req.ratePercent() == null)
+                if (req.amount() == null || req.termDays() == null || req.finalRate() == null)
                     throw new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
-                            "Для альтернативы нужны amount, termMonths, ratePercent");
-                createOffer(a, req.amount(), req.termMonths(), req.ratePercent());
+                            "Для альтернативы нужны amount, termDays, finalRate");
+                createOffer(a, req.amount(), req.termDays(), req.finalRate());
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
         }
-        return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow());
+        a.setDecision(switch (req.action()) {
+            case DECLINE -> DecisionStatus.DECLINED;
+            case APPROVE -> DecisionStatus.APPROVED;
+            case OFFER_ALTERNATIVE -> DecisionStatus.ALTERNATIVE_OFFER;
+        });
+        return toView(a, companyRepository.findById(a.getCompanyId()).orElseThrow(), true);
     }
 
     @Transactional
@@ -151,40 +180,49 @@ public class ApplicationService {
         return applicationRepository.findById(id).orElseThrow(() -> ApiException.notFound("Заявка не найдена"));
     }
 
-    private BigDecimal rateByClass(String cls) {
-        return new BigDecimal(switch (cls == null ? "D" : cls) {
-            case "A" -> "14.00"; case "B" -> "17.00"; case "C" -> "21.00"; default -> "25.00";
-        });
+    private int termDaysOf(CreditApplication a) {
+        if (a.getTermDays() != null) return a.getTermDays();
+        return a.getTermMonths() * ProductRules.DAYS_IN_MONTH;   // старые демо-строки
     }
 
-    private void createOffer(CreditApplication a, BigDecimal amount, int term, BigDecimal rate) {
+    /** finalRate при ручном APPROVE (для MANUAL_REVIEW автоматом ставка не считается): rate + премия класса + отраслевая. */
+    private BigDecimal manualFinalRate(CreditApplication a, int termDays) {
+        Company c = companyRepository.findById(a.getCompanyId()).orElseThrow();
+        BigDecimal rate = a.getRate() != null ? a.getRate() : ProductRules.baseRate(termDays);
+        return decisionEngine.finalRate(rate, RiskClass.parse(a.getRiskClass()),
+                IndustryDirectory.byOkved(c.getOkved()).ratePremium());
+    }
+
+    private void createOffer(CreditApplication a, BigDecimal amount, int termDays, BigDecimal finalRate) {
         Offer o = new Offer();
         o.setCompanyId(a.getCompanyId());
         o.setApplicationId(a.getId());
         o.setAmount(amount);
-        o.setTermMonths(term);
-        o.setRatePercent(rate);
-        o.setMonthlyPayment(annuity(amount, rate, term));
+        o.setTermDays(termDays);
+        o.setTermMonths(ProductRules.termMonthsRoundedUp(termDays));   // legacy-колонка NOT NULL
+        o.setRatePercent(finalRate);
+        o.setMonthlyPayment(scoringService.monthlyPayment(amount, finalRate, termDays));
         o.setValidUntil(LocalDate.now().plusDays(14));
         o.setStatus(OfferStatus.ACTIVE);
         offerRepository.save(o);
     }
 
-    /** Аннуитетный платёж: P * r / (1 - (1+r)^-n), r = ставка/12 */
-    private BigDecimal annuity(BigDecimal principal, BigDecimal ratePercent, int months) {
-        double r = ratePercent.doubleValue() / 100 / 12;
-        double p = principal.doubleValue() * r / (1 - Math.pow(1 + r, -months));
-        return BigDecimal.valueOf(p).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private ApplicationView toView(CreditApplication a, Company c) {
+    /** forBank=false: клиенту не отдаём bkiZone, данные БКИ/ФНС и разбивку баллов (ТЗ: bkiZone только для менеджера). */
+    private ApplicationView toView(CreditApplication a, Company c, boolean forBank) {
         ApplicationView.OfferView offer = offerRepository.findFirstByApplicationIdOrderByIdDesc(a.getId())
-                .map(o -> new ApplicationView.OfferView(o.getId(), o.getAmount(), o.getTermMonths(),
+                .map(o -> new ApplicationView.OfferView(o.getId(), o.getAmount(),
+                        o.getTermDays() != null ? o.getTermDays() : o.getTermMonths() * ProductRules.DAYS_IN_MONTH,
                         o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil(), o.getStatus().name()))
                 .orElse(null);
+
+        ScoringService.Result scoring = a.getScoringData() == null ? null
+                : mapper.treeToValue(a.getScoringData(), ScoringService.Result.class);
+        if (scoring != null && !forBank) scoring = scoring.forClient();
+
         return new ApplicationView(a.getId(), c.getName(), c.getInn(), c.getLegalForm(),
-                a.getAmount(), a.getTermMonths(), a.getPurpose(),a.getBusinessTask(), a.getStatus().name(),
+                a.getAmount(), termDaysOf(a), a.getRate(), a.getPurpose(), a.getBusinessTask(),
+                a.getStatus().name(), a.getDecision() == null ? null : a.getDecision().name(), a.getFinalRate(),
                 a.getRiskScore(), a.getRiskClass(), a.getAiComment(), a.getOfficerComment(),
-                a.getCreatedAt(), offer);
+                a.getCreatedAt(), scoring, offer);
     }
 }

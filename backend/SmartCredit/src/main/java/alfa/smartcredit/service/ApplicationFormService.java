@@ -34,10 +34,10 @@ public class ApplicationFormService {
 
         ApplicationFormDto form = new ApplicationFormDto(
                 null, Instant.now(), "DRAFT",
-                new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termMonths(), x.purpose()),
+                new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termDays(), null, x.purpose()),
                 new ApplicationFormDto.Step2(
                         registryMock(c, x),
-                        new ApplicationFormDto.Financials(x.monthlyRevenue(), x.existingMonthlyDebtPayment())),
+                        new ApplicationFormDto.Financials(x.monthlyRevenue(), x.existingDebt())),
                 new ApplicationFormDto.Prefilled(ip ? "EGRIP_MOCK" : "EGRUL_MOCK", Instant.now(), false),
                 new ApplicationFormDto.Step3(new ApplicationFormDto.Consents(false, false, false, null)),
                 new ApplicationFormDto.Meta("1.3", List.of("form_started")));
@@ -46,10 +46,10 @@ public class ApplicationFormService {
         List<String> filled = new ArrayList<>(), missing = new ArrayList<>();
         track(x.businessTask() != null, s1 + "businessTask", filled, missing);
         track(x.amount() != null,       s1 + "amount", filled, missing);
-        track(x.termMonths() != null,   s1 + "termMonths", filled, missing);
+        track(x.termDays() != null,     s1 + "termDays", filled, missing);
         track(x.purpose() != null,      s1 + "purpose", filled, missing);
         track(x.monthlyRevenue() != null, s2 + "financials.monthlyRevenue", filled, missing);
-        track(x.existingMonthlyDebtPayment() != null, s2 + "financials.existingMonthlyDebtPayment", filled, missing);
+        track(x.existingDebt() != null, s2 + "financials.existingDebt", filled, missing);
         if (x.industry() != null) filled.add(s2 + "applicant.industry");
         if (x.taxSystem() != null) filled.add(s2 + "applicant.taxSystem");
 
@@ -62,6 +62,7 @@ public class ApplicationFormService {
         applicant.put("inn", company.getInn());
         applicant.put("companyName", company.getName());
         applicant.put("mainOkved", company.getOkved());
+        applicant.put("registrationDate", ExternalDataService.registrationDate(company.getInn()).toString());
     }
 
     private void track(boolean ok, String path, List<String> filled, List<String> missing) {
@@ -71,8 +72,7 @@ public class ApplicationFormService {
     /** Мок реестра ЕГРИП/ЕГРЮЛ: детерминированный по ИНН. */
     private ApplicationFormDto.Applicant registryMock(Company c, AiExtractionService.Extracted x) {
         boolean ip = "IP".equals(c.getLegalForm());
-        int h = Math.abs(c.getInn().hashCode());
-        LocalDate reg = LocalDate.of(2008 + h % 16, 1 + h % 12, 1 + h % 28);
+        LocalDate reg = ExternalDataService.registrationDate(c.getInn());
 
         String first = null, last = null, middle = null;
         if (ip) {

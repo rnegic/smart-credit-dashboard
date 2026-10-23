@@ -21,7 +21,8 @@ public class Offer {
     @Column(name = "company_id") private Long companyId;
     @Column(name = "application_id") private Long applicationId;
     private BigDecimal amount;
-    @Column(name = "term_months") private Integer termMonths;
+    @Column(name = "term_months") private Integer termMonths;   // legacy, NOT NULL: ceil(termDays / 30)
+    @Column(name = "term_days") private Integer termDays;
     @Column(name = "rate_percent") private BigDecimal ratePercent;
     @Column(name = "monthly_payment") private BigDecimal monthlyPayment;
     @Column(name = "valid_until") private LocalDate validUntil;
