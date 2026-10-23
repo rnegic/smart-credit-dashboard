@@ -26,6 +26,8 @@ export const sessionSchema = z.object({
   role: z.enum(['CLIENT', 'BANK_OFFICER']),
   companyId: z.number().int().positive().nullable(),
   legalForm: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
 })
 export const demoProfilesSchema = z.array(
   z.object({
@@ -39,6 +41,21 @@ export const demoProfilesSchema = z.array(
 export type Session = z.infer<typeof sessionSchema>
 export type DemoProfile = z.infer<typeof demoProfilesSchema>[number]
 export const sessionKey = ['session'] as const
+
+/** Accept private cache updates only for the initiating account and generation. */
+export function isCurrentSession(
+  cache: QueryClient,
+  scope: number | null,
+  generation: number,
+) {
+  syncSessionChanges()
+  return (
+    scope !== null &&
+    generation === getSessionGeneration() &&
+    !isSessionSwitching() &&
+    cache.getQueryData<Session | null>(sessionKey)?.userId === scope
+  )
+}
 
 async function fetchSession(signal: AbortSignal) {
   try {
