@@ -27,7 +27,6 @@ import {
   applicationFormSubmissionSchema,
   applicationFormSchema,
   applicationDraftSchema,
-  prefillResponseSchema,
   useApplicationDraft,
   type ApplicationDraft,
   type ApplicationForm,
@@ -50,6 +49,8 @@ import {
   IpApplicationFields,
   type IpApplicationData,
 } from '../IpApplicationFields'
+import { ApplicationPreparation } from '../ApplicationPreparation'
+import { useApplicationPrefill } from '../../model/use-application-prefill'
 import {
   loadLocalDraft,
   numberOrNull,
@@ -67,12 +68,21 @@ const registrationSchema = applicationApplicantSubmissionSchema.pick({
   firstName: true,
   lastName: true,
   ogrnip: true,
-  registrationDate: true,
   mainOkved: true,
   industry: true,
   registrationAddress: true,
   phone: true,
   email: true,
+})
+// The API fills registry metadata itself; absent dates must not block the editor.
+const submissionSchema = applicationFormSubmissionSchema.extend({
+  step2_businessData:
+    applicationFormSubmissionSchema.shape.step2_businessData.extend({
+      applicant: applicationApplicantSubmissionSchema.extend({
+        registrationDate:
+          applicationApplicantSubmissionSchema.shape.registrationDate.nullable(),
+      }),
+    }),
 })
 const formSteps = [
   'Параметры финансирования',
@@ -338,24 +348,23 @@ function ApplicationFormEditor({
       setIpConfirmed(false)
   }
 
-  function restoreFields(responseForm: ApplicationForm) {
+  function applyPrefill(response: PrefillResponse, description: string) {
+    const responseForm = response.form
     const consents = responseForm.step3_verification.consents
     setServerForm(responseForm)
-    setForm(financingFields(responseForm))
+    setForm({ ...financingFields(responseForm), description })
     setIpEdits(applicantFields(responseForm))
     setIpConfirmed(responseForm.prefilled?.confirmedByUser ?? false)
     setNeedsDebtReview(false)
     setAcceptedAt(consents.acceptedAt)
     setDraftCreatedAt(responseForm.createdAt ?? new Date().toISOString())
-  }
-
-  function applyPrefill(response: PrefillResponse) {
-    restoreFields(response.form)
     setAiFilled(new Set(response.aiFilled))
     setMissingFields(new Set(response.missingFields))
     setStarted(true)
     setPrefillMessage(
-      'Поля заполнены по вашему запросу. Проверьте их перед отправкой.',
+      response.missingFields.length
+        ? 'Основные поля подготовлены. Проверьте их и дополните отмеченное'
+        : 'Поля подготовлены. Проверьте их перед отправкой.',
     )
     setErrors({})
     setStep(0)
@@ -386,7 +395,10 @@ function ApplicationFormEditor({
           ...name,
           ogrnip: nullableText(ipData.ogrnip),
           ogrn: serverForm?.step2_businessData.applicant.ogrn ?? null,
-          registrationDate: registrationDateValue(ipData.registrationDate),
+          registrationDate: registrationDateValue(
+            serverForm?.step2_businessData.applicant.registrationDate ??
+              ipData.registrationDate,
+          ),
           mainOkved: nullableText(ipData.okved),
           industry: nullableText(ipData.industry),
           phone: nullableText(ipData.phone),
@@ -542,13 +554,7 @@ function ApplicationFormEditor({
     },
   })
 
-  const prefill = useMutation({
-    mutationFn: (text: string) =>
-      apiRequest('/api/ai/prefill', prefillResponseSchema, {
-        method: 'POST',
-        body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(60_000),
-      }),
+  const prefill = useApplicationPrefill({
     onSuccess: applyPrefill,
     onError: (error) => {
       if (error instanceof ApiError && error.code === 'LEGAL_FORM_REQUIRED') {
@@ -561,7 +567,7 @@ function ApplicationFormEditor({
         return
       }
       setPrefillMessage(
-        'Не удалось заполнить поля автоматически. Заполните эту же форму вручную.',
+        'Не удалось заполнить поля автоматически. Продолжите в этой форме самостоятельно',
       )
       setErrors({})
       setStarted(true)
@@ -571,7 +577,7 @@ function ApplicationFormEditor({
   })
 
   const submit = useMutation({
-    mutationFn: (body: z.infer<typeof applicationFormSubmissionSchema>) =>
+    mutationFn: (body: z.infer<typeof submissionSchema>) =>
       apiRequest('/api/applications', applicationViewSchema, {
         method: 'POST',
         body: JSON.stringify(body),
@@ -612,7 +618,8 @@ function ApplicationFormEditor({
   })
 
   function start(manualInput: boolean, trigger: HTMLButtonElement) {
-    if (prefill.isPending || saveDraft.isPending || submit.isPending) return
+    if (saveDraft.isPending || submit.isPending || discardDraft.isPending) return
+    if (!manualInput && prefill.isPending) return
     if (!manualInput && !form.description.trim()) {
       setErrors({ description: 'Опишите, на что нужны деньги' })
       return
@@ -620,6 +627,7 @@ function ApplicationFormEditor({
     returnFocusRef.current = trigger
     setErrors({})
     if (manualInput) {
+      prefill.cancel()
       setPrefillMessage('')
       setStep(0)
       setStarted(true)
@@ -627,7 +635,7 @@ function ApplicationFormEditor({
       return
     }
     setPrefillMessage('')
-    prefill.mutate(form.description.trim())
+    prefill.start(form.description)
   }
   function handleNext(event: FormEvent) {
     event.preventDefault()
@@ -719,7 +727,6 @@ function ApplicationFormEditor({
       const snapshotForm = applicationFormSchema.safeParse(buildSubmission())
       if (!snapshotForm.success) {
         setErrors({
-          registrationDate: 'Укажите дату в формате ДД.ММ.ГГГГ',
           submission: 'Проверьте формат полей перед сохранением',
         })
         return
@@ -748,8 +755,7 @@ function ApplicationFormEditor({
       })
       return
     }
-    const submission =
-      applicationFormSubmissionSchema.safeParse(buildSubmission())
+    const submission = submissionSchema.safeParse(buildSubmission())
     if (!submission.success) {
       setErrors({
         submission:
@@ -773,92 +779,129 @@ function ApplicationFormEditor({
     saveDraft.isPending ||
     submit.isPending ||
     discardDraft.isPending
+  const showPreparation =
+    !open && (prefill.stage === 'preparing' || prefill.stage === 'slow')
 
   return (
     <>
       {!resumeOnly && (
-        <section className={styles.card}>
-          <Typography.TitleResponsive
-            tag={headingTag}
-            view="large"
-            font="system"
-            weight="bold"
+        <>
+          <section className={styles.card} aria-busy={prefill.isPending}>
+            <div className={styles.startContent}>
+              <div
+                className={styles.intent}
+                data-hidden={showPreparation}
+                aria-hidden={showPreparation || undefined}
+                inert={showPreparation}
+              >
+                <header className={styles.intentHeader}>
+                  <div className={styles.intentHeading}>
+                    <Typography.TitleResponsive
+                      tag={headingTag}
+                      view="large"
+                      font="system"
+                      weight="bold"
+                    >
+                      На что нужны деньги
+                    </Typography.TitleResponsive>
+                  </div>
+                  <p className={styles.intentLead} id={`${id}-intent-help`}>
+                    Опишите задачу своими словами. Перенесём детали в анкету,
+                    которую вы сможете проверить и изменить.
+                  </p>
+                </header>
+                <div className={styles.intentEditor}>
+                  <div className={styles.intentPrompt}>
+                    <label htmlFor={`${id}-intent`}>Ваша бизнес-задача</label>
+                    <span>Сумма, срок и цель</span>
+                  </div>
+                  <Textarea
+                    id={`${id}-intent`}
+                    name="description"
+                    aria-label="Ваша бизнес-задача"
+                    aria-describedby={`${id}-intent-help ${id}-intent-terms`}
+                    block
+                    autosize
+                    minRows={4}
+                    maxRows={8}
+                    maxLength={2000}
+                    readOnly={prefill.isPending}
+                    value={form.description}
+                    error={errors.description}
+                    placeholder="Например: нужно 1,5 млн ₽ на закупку товара на 60 дней"
+                    onChange={(_, { value }) =>
+                      setForm({ ...form, description: value })
+                    }
+                  />
+                  <p className={styles.intentTerms} id={`${id}-intent-terms`}>
+                    <strong>Срок транша: только 30, 60 или 90 дней.</strong>{' '}
+                    Укажите его в описании. Это не срок всего договора.
+                  </p>
+                </div>
+              </div>
+              <ApplicationPreparation
+                headingTag={headingTag}
+                visible={showPreparation}
+                slow={prefill.stage === 'slow'}
+              />
+            </div>
+            {dashboard.error && (
+              <RequestState
+                error={dashboard.error}
+                retry={() => {
+                  void dashboard.refetch()
+                }}
+              />
+            )}
+            <div className={styles.actions}>
+              <Button
+                view="primary"
+                rightAddons={<ArrowRightMIcon aria-hidden="true" />}
+                disabled={
+                  busy ||
+                  draft.isPending ||
+                  dashboard.isPending ||
+                  Boolean(dashboard.error)
+                }
+                onClick={(event: MouseEvent<HTMLButtonElement>) =>
+                  start(false, event.currentTarget)
+                }
+              >
+                Подготовить заявку
+              </Button>
+              <Button
+                view="secondary"
+                disabled={
+                  saveDraft.isPending ||
+                  submit.isPending ||
+                  discardDraft.isPending ||
+                  (!prefill.isPending &&
+                    (draft.isPending ||
+                      dashboard.isPending ||
+                      Boolean(dashboard.error)))
+                }
+                onClick={(event: MouseEvent<HTMLButtonElement>) =>
+                  start(true, event.currentTarget)
+                }
+              >
+                Заполнить самостоятельно
+              </Button>
+            </div>
+            {errors.prefill && <p role="alert">{errors.prefill}</p>}
+          </section>
+          <div
+            className={styles.preparationStatus}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
           >
-            На что нужны деньги
-          </Typography.TitleResponsive>
-          <p>
-            Расскажите о задаче бизнеса своими словами. Например, сколько нужно,
-            на что и на какой срок.
-          </p>
-          <p id={`${id}-intent-terms`}>
-            <strong>В этой анкете доступны только 30, 60 или 90 дней.</strong>{' '}
-            Укажите один из этих сроков в описании. Это срок транша, а не всего
-            договора.
-          </p>
-          <Textarea
-            id={`${id}-intent`}
-            name="description"
-            aria-label="На что нужны деньги"
-            aria-describedby={`${id}-intent-terms`}
-            block
-            autosize
-            minRows={4}
-            maxRows={8}
-            maxLength={2000}
-            value={form.description}
-            error={errors.description}
-            placeholder="Например: нужно 1,5 млн ₽ на закупку товара на 60 дней"
-            onChange={(_, { value }) =>
-              setForm({ ...form, description: value })
-            }
-          />
-          {dashboard.error && (
-            <RequestState
-              error={dashboard.error}
-              retry={() => {
-                void dashboard.refetch()
-              }}
-            />
-          )}
-          <div className={styles.actions}>
-            <Button
-              view="primary"
-              rightAddons={<ArrowRightMIcon aria-hidden="true" />}
-              loading={prefill.isPending}
-              disabled={
-                prefill.isPending ||
-                busy ||
-                draft.isPending ||
-                dashboard.isPending ||
-                Boolean(dashboard.error)
-              }
-              onClick={(event: MouseEvent<HTMLButtonElement>) =>
-                start(false, event.currentTarget)
-              }
-            >
-              Продолжить
-            </Button>
-            <Button
-              view="secondary"
-              disabled={
-                prefill.isPending ||
-                busy ||
-                draft.isPending ||
-                dashboard.isPending ||
-                Boolean(dashboard.error)
-              }
-              onClick={(event: MouseEvent<HTMLButtonElement>) =>
-                start(true, event.currentTarget)
-              }
-            >
-              Выбрать самостоятельно
-            </Button>
+            {prefill.stage === 'slow'
+              ? 'Подготовка ещё идёт. Можно подождать или заполнить заявку самостоятельно.'
+              : prefill.isPending
+                ? 'Готовим вашу заявку'
+                : ''}
           </div>
-          {prefill.isPending && (
-            <p role="status">Анализируем запрос и заполняем поля…</p>
-          )}
-          {errors.prefill && <p role="alert">{errors.prefill}</p>}
-        </section>
+        </>
       )}
       {started && !open && (
         <section
@@ -1038,8 +1081,7 @@ function ApplicationFormEditor({
               {steps[step]}
             </h2>
             <p>
-              Все поля анкеты обязательны. Если кредитов нет, укажите платеж 0
-              ₽.
+              Все поля анкеты обязательны.
             </p>
             {needsDebtReview && (
               <p role="status">
@@ -1056,7 +1098,7 @@ function ApplicationFormEditor({
                     <p>{form.description}</p>
                     {aiFilled.has('step1_financingParameters.businessTask') && (
                       <Typography.Text view="primary-small" color="secondary">
-                        Заполнено ИИ, проверьте
+                        Заполнено автоматически, проверьте
                       </Typography.Text>
                     )}
                   </div>
@@ -1074,7 +1116,7 @@ function ApplicationFormEditor({
                     value={form.amount}
                     hint={
                       aiFilled.has('step1_financingParameters.amount')
-                        ? 'Заполнено ИИ, проверьте'
+                        ? 'Заполнено автоматически, проверьте'
                         : undefined
                     }
                     error={
@@ -1101,7 +1143,7 @@ function ApplicationFormEditor({
                     placeholder="Выберите срок"
                     hint={
                       aiFilled.has('step1_financingParameters.termDays')
-                        ? 'Заполнено ИИ, проверьте'
+                        ? 'Заполнено автоматически, проверьте'
                         : undefined
                     }
                     error={
@@ -1127,7 +1169,7 @@ function ApplicationFormEditor({
                     value={form.purpose}
                     hint={
                       aiFilled.has('step1_financingParameters.purpose')
-                        ? 'Заполнено ИИ, проверьте'
+                        ? 'Заполнено автоматически, проверьте'
                         : undefined
                     }
                     error={
