@@ -24,7 +24,7 @@ public class ApplicationFormService {
     private final AiExtractionService ai;
 
     @Transactional(readOnly = true)
-    public PrefillResponse prefill(Long companyId, String text) {
+    public PrefillResponse prefill(Long companyId, String phone, String email, String text) {
         Company c = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
         if (c.getLegalForm() == null)
             throw new ApiException(HttpStatus.CONFLICT, "LEGAL_FORM_REQUIRED", "Сначала выберите ИП или ООО");
@@ -36,7 +36,7 @@ public class ApplicationFormService {
                 null, Instant.now(), "DRAFT",
                 new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termDays(), null, x.purpose()),
                 new ApplicationFormDto.Step2(
-                        registryMock(c, x),
+                        registryMock(c, x, phone, email),
                         new ApplicationFormDto.Financials(x.monthlyRevenue(), x.existingDebt())),
                 new ApplicationFormDto.Prefilled(ip ? "EGRIP_MOCK" : "EGRUL_MOCK", Instant.now(), false),
                 new ApplicationFormDto.Step3(new ApplicationFormDto.Consents(false, false, false, null)),
@@ -50,6 +50,9 @@ public class ApplicationFormService {
         track(x.purpose() != null,      s1 + "purpose", filled, missing);
         track(x.monthlyRevenue() != null, s2 + "financials.monthlyRevenue", filled, missing);
         track(x.existingDebt() != null, s2 + "financials.existingDebt", filled, missing);
+        // контакты берём из личного кабинета (БД); если их там нет, клиент заполнит сам
+        track(phone != null, s2 + "applicant.phone", filled, missing);
+        track(email != null, s2 + "applicant.email", filled, missing);
         if (x.industry() != null) filled.add(s2 + "applicant.industry");
         if (x.taxSystem() != null) filled.add(s2 + "applicant.taxSystem");
 
@@ -65,12 +68,15 @@ public class ApplicationFormService {
         applicant.put("registrationDate", ExternalDataService.registrationDate(company.getInn()).toString());
     }
 
+    private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }
+
     private void track(boolean ok, String path, List<String> filled, List<String> missing) {
         (ok ? filled : missing).add(path);
     }
 
     /** Мок реестра ЕГРИП/ЕГРЮЛ: детерминированный по ИНН. */
-    private ApplicationFormDto.Applicant registryMock(Company c, AiExtractionService.Extracted x) {
+    private ApplicationFormDto.Applicant registryMock(Company c, AiExtractionService.Extracted x,
+                                                      String phone, String email) {
         boolean ip = "IP".equals(c.getLegalForm());
         LocalDate reg = ExternalDataService.registrationDate(c.getInn());
 
@@ -87,6 +93,6 @@ public class ApplicationFormService {
         return new ApplicationFormDto.Applicant(
                 c.getLegalForm(), c.getName(), c.getInn(), x.taxSystem(),
                 first, last, middle, ogrnip, ogrn, reg, c.getOkved(),
-                x.industry(), null, null, "г. Москва (данные реестра, демо)");
+                x.industry(), blankToNull(phone), blankToNull(email), "г. Москва (данные реестра, демо)");
     }
 }
