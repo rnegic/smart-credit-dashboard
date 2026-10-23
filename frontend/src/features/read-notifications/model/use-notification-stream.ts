@@ -5,7 +5,11 @@ import {
   type Notification,
 } from '@/entities/notification'
 import { sessionKey, useSession } from '@/entities/session'
-import { apiEventStream, useApiScope } from '@/shared/api'
+import {
+  apiEventStream,
+  useApiScope,
+  useSessionTransition,
+} from '@/shared/api'
 
 /** The backend only streams CLIENT events and does not replay missed messages. */
 export function useNotificationStream() {
@@ -13,6 +17,7 @@ export function useNotificationStream() {
   const session = useSession()
   const role = session.data?.role
   const companyId = session.data?.companyId
+  const transition = useSessionTransition()
   const cache = useQueryClient()
   const [state, setState] = useState<'connecting' | 'connected' | 'reconnecting'>(
     'connecting',
@@ -20,7 +25,13 @@ export function useNotificationStream() {
   const [latest, setLatest] = useState<Notification | null>(null)
 
   useEffect(() => {
-    if (scope === null || role !== 'CLIENT' || companyId == null) return
+    if (
+      scope === null ||
+      role !== 'CLIENT' ||
+      companyId == null ||
+      transition.switching
+    )
+      return
     const notificationKey = ['client', scope, 'notifications']
     const seen = new Set<number>()
     let checkingSession = false
@@ -81,7 +92,14 @@ export function useNotificationStream() {
         }
       },
     })
-  }, [cache, companyId, role, scope])
+  }, [
+    cache,
+    companyId,
+    role,
+    scope,
+    transition.generation,
+    transition.switching,
+  ])
 
   useEffect(() => {
     if (!latest) return

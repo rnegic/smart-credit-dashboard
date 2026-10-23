@@ -79,6 +79,7 @@ export function BankWorkspace() {
     enabled: session.data?.role === 'BANK_OFFICER' && !session.isError,
     staleTime: 15_000,
     refetchInterval: 15_000,
+    notifyOnChangeProps: ['data', 'error', 'isPending', 'isError'],
     gcTime: 5 * 60_000,
     retry: false,
   })
@@ -96,7 +97,6 @@ export function BankWorkspace() {
       !session.isError &&
       selectedId !== undefined,
     staleTime: 0,
-    refetchInterval: 15_000,
     gcTime: 5 * 60_000,
     retry: false,
   })
@@ -273,7 +273,7 @@ export function BankWorkspace() {
           <p className={styles.secondary}>
             Все новые заявки рассматривает сотрудник. Скоринг и AI-сводка
             помогают принять решение, но не принимают его автоматически.
-            Очередь и открытая заявка обновляются каждые 15 секунд.
+            Очередь заявок обновляется в фоне каждые 15 секунд.
           </p>
           {queue && (
             <p>
@@ -286,8 +286,7 @@ export function BankWorkspace() {
           view="secondary"
           size={48}
           className={styles.refresh}
-          loading={applications.isFetching}
-          disabled={applications.isFetching || decision.isPending}
+          disabled={decision.isPending}
           onClick={() => {
             void applications.refetch()
           }}
@@ -308,11 +307,6 @@ export function BankWorkspace() {
             </p>
           )}
         </div>
-      )}
-      {applications.isFetching && !applications.isPending && (
-        <p className={styles.secondary} role="status">
-          Обновляем статусы заявок...
-        </p>
       )}
       {queue?.length === 0 && <p role="status">Заявок пока нет.</p>}
       {queue && queue.length > 0 && (
@@ -547,9 +541,7 @@ export function BankWorkspace() {
               >
                 <h3>Рекомендация скоринга</h3>
                 <p className={styles.secondary}>
-                  Только для банка. Это рекомендация, а не сохранённое решение.
-                  Сотрудник может выбрать любое решение, пока заявка на
-                  рассмотрении, в том числе одобрить при рекомендации отказа.
+                  Это рекомендация, не окончательное решение
                 </p>
                 {recommendation ? (
                   <>
@@ -593,7 +585,7 @@ export function BankWorkspace() {
               >
                 <h3>AI-сводка для банка</h3>
                 <p className={styles.secondary}>
-                  Доступна только сотруднику банка. Носит рекомендательный
+                  Носит рекомендательный
                   характер и не заменяет решение сотрудника.
                 </p>
                 <p className={styles.comment}>
@@ -697,9 +689,7 @@ export function BankWorkspace() {
                   >
                     <h3>Банковские данные скоринга</h3>
                     <p className={styles.secondary}>
-                      Эти сведения не отображаются в кабинете клиента. БКИ, ФНС
-                      и реестры в прототипе заменены моками по ИНН, без запросов
-                      к реальным внешним источникам.
+                      Эти сведения не отображаются в кабинете клиента
                     </p>
                     <dl className={styles.parameters}>
                       {scoring.bkiZone && (

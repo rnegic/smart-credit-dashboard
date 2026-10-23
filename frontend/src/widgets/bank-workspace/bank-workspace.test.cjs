@@ -431,14 +431,23 @@ function workspace({ view = bankApplication(), posts = [], open = true } = {}) {
   return h
 }
 
-test('bank queue and selected detail poll every 15 seconds using bank schemas and abort signals', async () => {
+test('bank queue polls silently while selected detail stays stable', async () => {
   const h = workspace({ open: false })
   assert.equal(h.queries.queue.refetchInterval, 15000)
-  assert.equal(h.queries.detail.refetchInterval, 15000)
+  assert.equal(h.queries.detail.refetchInterval, undefined)
+  assert.deepEqual(json(h.queries.queue.notifyOnChangeProps), [
+    'data', 'error', 'isPending', 'isError',
+  ])
   assert.equal(h.queries.queue.enabled, true)
   assert.equal(h.queries.detail.enabled, false)
   assert.ok(h.html.includes('Все новые заявки рассматривает сотрудник'))
+  assert.ok(h.html.includes('Очередь заявок обновляется в фоне'))
+  assert.ok(!h.html.includes('Обновляем статусы заявок'))
   assert.ok(!h.html.includes('Сервер принимает решение'))
+  h.flags.queue.isFetching = true
+  h.render()
+  assert.ok(!h.html.includes('aria-busy="true"'))
+  assert.ok(!h.html.includes('Обновляем статусы заявок'))
   assert.deepEqual(h.requests, [])
   h.open()
   assert.equal(h.queries.detail.enabled, true)

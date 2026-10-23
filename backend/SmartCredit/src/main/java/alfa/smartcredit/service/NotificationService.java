@@ -31,6 +31,7 @@ public class NotificationService {
 
     /** Слушает смену статуса и шлёт уведомление ТОЛЬКО после успешного commit транзакции. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onApplicationStatusChanged(ApplicationStatusChangedEvent e) {
         try {
             notify(e.companyId(), e.message());
@@ -39,8 +40,7 @@ public class NotificationService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public NotificationDto notify(Long companyId, String text) {
+    private NotificationDto notify(Long companyId, String text) {
         Notification n = new Notification();
         n.setCompanyId(companyId);
         n.setText(text);
