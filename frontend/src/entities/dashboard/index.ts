@@ -14,9 +14,20 @@ export const dashboardSchema = z.object({
     .object({
       id: z.number().int(),
       amount: z.number(),
-      termMonths: z.number().int(),
+      termDays: z.number().int(),
+      rate: z.number().nullable(),
       purpose: z.string().nullable(),
       status: z.enum(['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']),
+      decision: z
+        .enum([
+          'INFO_REQUIRED',
+          'DECLINED',
+          'APPROVED',
+          'ALTERNATIVE_OFFER',
+          'MANUAL_REVIEW',
+        ])
+        .nullable(),
+      finalRate: z.number().nullable(),
       createdAt: z.iso.datetime({ offset: true }),
     })
     .nullable(),
@@ -37,8 +48,8 @@ export const dashboardSchema = z.object({
     z.object({
       id: z.number().int(),
       amount: z.number(),
-      termMonths: z.number().int(),
-      ratePercent: z.number(),
+      termDays: z.number().int(),
+      finalRate: z.number(),
       monthlyPayment: z.number(),
       validUntil: z.iso.date(),
     }),
