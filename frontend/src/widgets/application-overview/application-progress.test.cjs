@@ -42,6 +42,8 @@ const application = {
   id: 7, amount: 100000, termDays: 30, rate: 24.5, purpose: 'Оборотные средства',
   decision: 'ALTERNATIVE_OFFER', finalRate: null,
   internalScore: 66, riskClass: 'B', scoring: null,
+  companyName: 'Тестовая компания', inn: '7701234567', legalForm: 'OOO', businessTask: null,
+  aiComment: null, recommendation: null, officerComment: null, offer: null,
   createdAt: '2026-10-01T12:00:00Z', status: 'OFFER_READY',
 }
 const offer = {
@@ -95,12 +97,13 @@ function expectedTerms(value = offer) {
 }
 
 function makeView({ status = 'OFFER_READY', applicationOverride = {}, offerOverride = {},
-  officerComment = 'Недостаточно данных о доходах', aiComment = 'Автоматическое заключение скоринга' } = {}) {
+  officerComment = status === 'IN_REVIEW' ? null : 'Недостаточно данных о доходах', aiComment = null } = {}) {
   return {
     ...application, status,
-    decision: { IN_REVIEW: 'MANUAL_REVIEW', OFFER_READY: 'ALTERNATIVE_OFFER', ACCEPTED: 'APPROVED', DECLINED: 'DECLINED' }[status],
+    decision: { IN_REVIEW: null, OFFER_READY: 'ALTERNATIVE_OFFER', ACCEPTED: 'APPROVED', DECLINED: 'DECLINED' }[status],
     ...applicationOverride,
-    offer: offerOverride === null ? null : { ...offer, status: status === 'ACCEPTED' ? 'ACCEPTED' : 'ACTIVE', ...offerOverride },
+    offer: offerOverride === null || status === 'IN_REVIEW' || status === 'DECLINED'
+      ? null : { ...offer, status: status === 'ACCEPTED' ? 'ACCEPTED' : 'ACTIVE', ...offerOverride },
     officerComment, aiComment,
   }
 }
@@ -439,10 +442,11 @@ for (const status of ['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']) {
 }
 
 test('decline is a negative decision, not waiting for an offer', () => {
-  const { html, renderedSteps } = overview({ status: 'DECLINED', officerComment: null })
+  const { html, renderedSteps } = overview({ status: 'DECLINED', officerComment: null, aiComment: 'Автоматическое заключение скоринга' })
   assert.ok(html.includes('Статус: отказ по заявке'))
   assert.ok(html.includes('Предложение: не выполняется: заявка отклонена'))
-  assert.ok(html.includes('Автоматический комментарий: Автоматическое заключение скоринга'))
+  assert.ok(html.includes('Комментарий кредитного специалиста пока не указан.'))
+  assert.ok(!html.includes('Автоматическое заключение скоринга'))
   const manual = overview({ status: 'DECLINED', officerComment: 'Отказ сотрудника' })
   assert.ok(manual.html.includes('Отказ сотрудника'))
   assert.ok(!manual.html.includes('Автоматическое заключение скоринга'))
@@ -502,7 +506,8 @@ test('selected application officer comments stay prominent and separate from aut
   const officerComment = '  Условия согласованы сотрудником.\n\nПроверьте документы.  '
   for (const provided of [true, false]) {
     for (const status of ['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']) {
-      const { html, summaryHtml, panelHtml } = overview({ status, provided, officerComment, applicationsFailed: true })
+      const { html, summaryHtml, panelHtml } = overview({ status, provided, officerComment,
+        aiComment: 'Автоматическое заключение скоринга', applicationsFailed: true })
       for (const section of status === 'OFFER_READY' ? [panelHtml] : [summaryHtml, panelHtml]) {
         assert.ok(section.includes('Комментарий кредитного специалиста'))
         assert.ok(section.includes(`<p>${officerComment.trim()}</p>`))
@@ -513,12 +518,45 @@ test('selected application officer comments stay prominent and separate from aut
     }
   }
   for (const officerComment of [null, ' \n ']) {
-    const { html } = overview({ status: 'DECLINED', officerComment })
+    const { html } = overview({ status: 'DECLINED', officerComment, aiComment: 'Автоматическое заключение скоринга' })
     assert.ok(!html.includes('<strong>Комментарий кредитного специалиста</strong>'))
-    assert.ok(html.includes('Автоматический комментарий: Автоматическое заключение скоринга'))
+    assert.ok(html.includes('Комментарий кредитного специалиста пока не указан.'))
+    assert.ok(!html.includes('Автоматическое заключение скоринга'))
   }
   const missing = overview({ status: 'DECLINED', officerComment: null, aiComment: ' ' })
-  assert.ok(missing.html.includes('Причина отказа не указана.'))
+  assert.ok(missing.html.includes('Комментарий кредитного специалиста пока не указан.'))
+})
+
+test('new applications have no saved decision, offer or final rate before officer review', () => {
+  const h = overview({ status: 'IN_REVIEW' })
+  assert.equal(h.view.decision, null)
+  assert.equal(h.view.finalRate, null)
+  assert.equal(h.view.offer, null)
+  assert.equal(h.view.recommendation, null)
+  assert.equal(h.view.aiComment, null)
+  assert.equal(h.view.officerComment, null)
+  assert.ok(h.html.includes('Заявка на рассмотрении у кредитного специалиста'))
+  assert.ok(!h.html.includes('Предложение по заявке'))
+})
+
+test('client hero and details never expose bank AI, recommendations or private scoring even if supplied', () => {
+  for (const provided of [true, false]) {
+    for (const status of ['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']) {
+      const { html } = overview({ status, provided, officerComment: null,
+        aiComment: 'Закрытая AI-сводка банка', applicationOverride: {
+          recommendation: { decision: 'DECLINED', amount: 9876543, finalRate: 97.32, reason: 'Закрытое обоснование рекомендации' },
+          scoring: { rate: 24.5, termMonthsEquivalent: 1, newMonthlyPayment: 110000,
+            dtiPercent: 22, amountToRevenue: 0.1, isDataComplete: true, internalScore: 66, riskClass: 'B',
+            industryLimitCoef: 0.8, industryRatePremium: 1, absoluteMaxAmount: 20000000, calculatedLimit: 100000,
+            bkiZone: 'RED', points: { bkiScore: 912345 },
+            external: { bkiScore: 823456, delinquencies12m: 10, inquiries12m: 20, activeLoans: 3,
+              revenueTrend: 'DECLINING', companyAgeYears: 5 } },
+        } })
+      assert.doesNotMatch(html, /Закрытая AI-сводка|Закрытое обоснование|Рекомендуем|97[.,]32|912345|823456|БКИ|DECLINING/)
+      assert.ok(html.includes('Платёж скоринга по базовой ставке'))
+      if (status === 'DECLINED') assert.ok(html.includes('Комментарий кредитного специалиста пока не указан.'))
+    }
+  }
 })
 
 test('application summaries never substitute root or base rates for linked offer terms', () => {

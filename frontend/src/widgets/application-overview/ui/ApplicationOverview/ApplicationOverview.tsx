@@ -301,13 +301,11 @@ export function ApplicationOverview({
       title: 'В заявке отказано',
       description: officerComment
         ? 'Причина отказа указана в комментарии кредитного специалиста.'
-        : applicationView?.aiComment?.trim()
-          ? `Автоматический комментарий: ${applicationView.aiComment.trim()}`
-          : !providedApplication && applications.isError
-            ? applications.error.message
-            : !providedApplication && applications.isPending
-              ? 'Загружаем причину отказа…'
-              : 'Причина отказа не указана.',
+        : !providedApplication && applications.isError
+          ? applications.error.message
+          : !providedApplication && applications.isPending
+            ? 'Загружаем комментарий кредитного специалиста…'
+            : 'Комментарий кредитного специалиста пока не указан.',
     },
     ACCEPTED: {
       title: 'Условия приняты',
@@ -403,7 +401,7 @@ export function ApplicationOverview({
               <dd>{scoring.amountToRevenue}</dd>
             </div>
             <div>
-              <dt>Расчётный платёж по заявке</dt>
+              <dt>Платёж скоринга по базовой ставке</dt>
               <dd>
                 {scoring.newMonthlyPayment == null
                   ? 'Нет расчёта'
@@ -420,8 +418,8 @@ export function ApplicationOverview({
             </div>
           </dl>
           <Typography.Text tag="p" color="secondary">
-            Скоринг рассчитан сервером для исходной заявки. Условия предложения
-            указаны отдельно.
+            Скоринг рассчитан сервером для исходной заявки по базовой ставке,
+            а не по ставке предложения. Условия предложения указаны отдельно.
           </Typography.Text>
         </>
       )}
