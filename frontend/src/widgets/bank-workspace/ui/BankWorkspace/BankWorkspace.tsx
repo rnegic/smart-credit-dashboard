@@ -1,17 +1,23 @@
 import { useId, useRef, useState } from 'react'
 import { Button } from '@alfalab/core-components/button'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSession, type Session } from '@/entities/session'
+import { sessionKey, useSession, type Session } from '@/entities/session'
 import { applicationBusinessSummarySchema } from '@/entities/application-form'
 import { getCompanyAge, getIndustryGroup } from '@/entities/company'
 import {
   applicationDecisionLabels,
-  applicationViewSchema,
-  applicationViewsSchema,
+  bankApplicationViewSchema,
+  bankApplicationViewsSchema,
   applicationStatusLabels,
-  type ApplicationView,
+  type BankApplicationView,
 } from '@/entities/loan-application'
-import { ApiError, apiRequest } from '@/shared/api'
+import {
+  ApiError,
+  apiRequest,
+  getSessionGeneration,
+  isSessionSwitching,
+  syncSessionChanges,
+} from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
 import { Panel } from '@/shared/ui'
 import { DecisionForm } from '../DecisionForm'
@@ -22,7 +28,8 @@ type UserId = Session['userId']
 
 interface DecisionVariables {
   userId: UserId
-  applicationId: ApplicationView['id']
+  generation: number
+  applicationId: BankApplicationView['id']
   decision: Decision
 }
 
@@ -54,10 +61,11 @@ export function BankWorkspace() {
   const headingId = useId()
   const session = useSession()
   const userId = session.data?.userId
+  const generation = getSessionGeneration()
   const queryClient = useQueryClient()
   const [selection, setSelection] = useState<{
     userId: UserId
-    applicationId: ApplicationView['id']
+    applicationId: BankApplicationView['id']
   } | null>(null)
   const selectedId =
     selection?.userId === userId ? selection?.applicationId : undefined
@@ -67,9 +75,10 @@ export function BankWorkspace() {
   const applications = useQuery({
     queryKey: ['bank', userId, 'applications'],
     queryFn: ({ signal }) =>
-      apiRequest('/api/bank/applications', applicationViewsSchema, { signal }),
+      apiRequest('/api/bank/applications', bankApplicationViewsSchema, { signal }),
     enabled: session.data?.role === 'BANK_OFFICER' && !session.isError,
     staleTime: 15_000,
+    refetchInterval: 15_000,
     gcTime: 5 * 60_000,
     retry: false,
   })
@@ -79,7 +88,7 @@ export function BankWorkspace() {
     queryFn: ({ signal }) =>
       apiRequest(
         `/api/bank/applications/${selectedId}`,
-        applicationViewSchema,
+        bankApplicationViewSchema,
         { signal },
       ),
     enabled:
@@ -87,6 +96,7 @@ export function BankWorkspace() {
       !session.isError &&
       selectedId !== undefined,
     staleTime: 0,
+    refetchInterval: 15_000,
     gcTime: 5 * 60_000,
     retry: false,
   })
@@ -108,20 +118,39 @@ export function BankWorkspace() {
     retry: false,
   })
 
+  function isCurrentOfficer(variables: DecisionVariables) {
+    syncSessionChanges()
+    const currentSession = queryClient.getQueryData<Session | null>(sessionKey)
+    return (
+      !isSessionSwitching() &&
+      variables.generation === getSessionGeneration() &&
+      currentSession?.userId === variables.userId &&
+      currentSession.role === 'BANK_OFFICER'
+    )
+  }
+
   const decision = useMutation({
-    mutationFn: ({ applicationId, decision: body }: DecisionVariables) =>
-      apiRequest(
-        `/api/bank/applications/${applicationId}/decision`,
-        applicationViewSchema,
-        { method: 'POST', body: JSON.stringify(body) },
-      ),
+    mutationFn: async (variables: DecisionVariables) => {
+      if (!isCurrentOfficer(variables))
+        throw new ApiError(
+          409,
+          'SESSION_CHANGED',
+          'Сессия изменилась. Решение из прежней сессии не отправлено.',
+        )
+      return apiRequest(
+        `/api/bank/applications/${variables.applicationId}/decision`,
+        bankApplicationViewSchema,
+        { method: 'POST', body: JSON.stringify(variables.decision) },
+      )
+    },
     retry: false,
     onSuccess: async (updated, variables) => {
+      if (!isCurrentOfficer(variables)) return
       queryClient.setQueryData(
         ['bank', variables.userId, 'applications', variables.applicationId],
         updated,
       )
-      queryClient.setQueryData<ApplicationView[]>(
+      queryClient.setQueryData<BankApplicationView[]>(
         ['bank', variables.userId, 'applications'],
         (current) =>
           current?.map((item) => (item.id === updated.id ? updated : item)),
@@ -131,9 +160,15 @@ export function BankWorkspace() {
       })
     },
     onError: async (error, variables) => {
+      if (
+        (error instanceof ApiError && error.code === 'SESSION_CHANGED') ||
+        !isCurrentOfficer(variables)
+      )
+        return
       await queryClient.invalidateQueries({
         queryKey: ['bank', variables.userId],
       })
+      if (!isCurrentOfficer(variables)) return
       if (!(error instanceof ApiError && error.code === 'ALREADY_DECIDED')) {
         const key = `${variables.userId}:${variables.applicationId}`
         decisionLocks.current.delete(key)
@@ -148,6 +183,7 @@ export function BankWorkspace() {
 
   const application = detail.data
   const scoring = application?.scoring
+  const recommendation = application?.recommendation
   const finalRate = application?.offer?.finalRate ?? application?.finalRate
   const businessData = applicationForm.data?.step2_businessData
   const monthlyRevenue = businessData?.financials?.monthlyRevenue
@@ -172,6 +208,7 @@ export function BankWorkspace() {
             }).format(scoreAge)} (по данным скоринга)`)
   const currentDecision =
     decision.variables?.userId === userId &&
+    decision.variables?.generation === generation &&
     decision.variables?.applicationId === selectedId
   const pending = decision.isPending && Boolean(currentDecision)
   const locked =
@@ -191,12 +228,19 @@ export function BankWorkspace() {
     )
       return
 
+    const variables = {
+      userId,
+      generation,
+      applicationId: selectedId,
+      decision: body,
+    }
+    if (!isCurrentOfficer(variables)) return
     const lockKey = `${userId}:${selectedId}`
     // Guard synchronous double submissions before the mutation state rerenders.
     if (decisionLocks.current.has(lockKey)) return
     decisionLocks.current.add(lockKey)
     setLockedKeys((current) => new Set(current).add(lockKey))
-    decision.mutate({ userId, applicationId: selectedId, decision: body })
+    decision.mutate(variables)
   }
 
   if (session.isError) {
@@ -209,7 +253,7 @@ export function BankWorkspace() {
   if (session.isPending) {
     return <p role="status">Загружаем сессию сотрудника...</p>
   }
-  if (!session.data) {
+  if (!session.data || session.data.role !== 'BANK_OFFICER') {
     return (
       <p role="status">
         Для работы с заявками войдите в аккаунт сотрудника банка.
@@ -227,8 +271,9 @@ export function BankWorkspace() {
         <div className={styles.heading}>
           <h1 id={headingId}>Рабочее место банка</h1>
           <p className={styles.secondary}>
-            Все заявки компаний. Сервер принимает решение по правилам скоринга;
-            заявки на ручной проверке рассматривает сотрудник.
+            Все новые заявки рассматривает сотрудник. Скоринг и AI-сводка
+            помогают принять решение, но не принимают его автоматически.
+            Очередь и открытая заявка обновляются каждые 15 секунд.
           </p>
           {queue && (
             <p>
@@ -313,10 +358,16 @@ export function BankWorkspace() {
                   {applicationStatusLabels[item.status]}
                 </span>
                 <span className={styles.secondary}>
-                  Решение:{' '}
+                  Решение банка:{' '}
                   {item.decision
                     ? applicationDecisionLabels[item.decision]
-                    : 'Не указано'}
+                    : 'Не принято'}
+                </span>
+                <span className={styles.secondary}>
+                  Рекомендация скоринга:{' '}
+                  {item.recommendation
+                    ? applicationDecisionLabels[item.recommendation.decision]
+                    : 'Не сохранена'}
                 </span>
                 <Button
                   type="button"
@@ -462,7 +513,7 @@ export function BankWorkspace() {
                     </dd>
                   </div>
                   <div>
-                    <dt>Итоговая годовая ставка</dt>
+                    <dt>Сохранённая итоговая годовая ставка</dt>
                     <dd>
                       {finalRate == null ? 'Не определена' : `${finalRate}%`}
                     </dd>
@@ -492,23 +543,70 @@ export function BankWorkspace() {
 
               <section
                 className={styles.scoring}
-                aria-label="Скоринг и решение"
+                aria-label="Рекомендация скоринга, только для банка"
               >
-                <h3>Скоринг и решение</h3>
-                <p>
-                  <strong>
-                    Ручное решение доступно только для заявок на рассмотрении.
-                  </strong>
+                <h3>Рекомендация скоринга</h3>
+                <p className={styles.secondary}>
+                  Только для банка. Это рекомендация, а не сохранённое решение.
+                  Сотрудник может выбрать любое решение, пока заявка на
+                  рассмотрении, в том числе одобрить при рекомендации отказа.
                 </p>
+                {recommendation ? (
+                  <>
+                    <dl className={styles.parameters}>
+                      <div>
+                        <dt>Рекомендуемое решение</dt>
+                        <dd>
+                          {applicationDecisionLabels[recommendation.decision]}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Рекомендуемая сумма</dt>
+                        <dd>
+                          {recommendation.amount === null
+                            ? 'Не указана'
+                            : formatMoney(recommendation.amount)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Рекомендуемая годовая ставка</dt>
+                        <dd>
+                          {recommendation.finalRate === null
+                            ? 'Не указана'
+                            : `${recommendation.finalRate}%`}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p>
+                      <strong>Обоснование рекомендации</strong>
+                    </p>
+                    <p className={styles.comment}>{recommendation.reason}</p>
+                  </>
+                ) : (
+                  <p className={styles.secondary}>Рекомендация не сохранена.</p>
+                )}
+              </section>
+
+              <section
+                className={styles.section}
+                aria-label="AI-сводка, только для банка"
+              >
+                <h3>AI-сводка для банка</h3>
+                <p className={styles.secondary}>
+                  Доступна только сотруднику банка. Носит рекомендательный
+                  характер и не заменяет решение сотрудника.
+                </p>
+                <p className={styles.comment}>
+                  {application.aiComment?.trim() || 'AI-сводка не сохранена.'}
+                </p>
+              </section>
+
+              <section
+                className={styles.scoring}
+                aria-label="Скоринг исходной заявки"
+              >
+                <h3>Скоринг исходной заявки</h3>
                 <dl className={styles.parameters}>
-                  <div>
-                    <dt>Решение</dt>
-                    <dd>
-                      {application.decision
-                        ? applicationDecisionLabels[application.decision]
-                        : 'Не указано'}
-                    </dd>
-                  </div>
                   <div>
                     <dt>Внутренний скоринговый балл</dt>
                     <dd>
@@ -576,16 +674,13 @@ export function BankWorkspace() {
                     банковские данные недоступны.
                   </p>
                 )}
-                <p className={styles.comment}>
-                  {application.aiComment?.trim() ||
-                    'Комментарий скоринга отсутствует.'}
-                </p>
                 <p className={styles.secondary}>
                   Детерминированный скоринг учитывает оценку БКИ, просрочки и
                   запросы за 12 месяцев, динамику выручки, возраст бизнеса, DTI,
                   отношение суммы к годовой выручке и полноту данных. Отрасль
-                  влияет на лимит и надбавку к ставке. Расчёты и решение
-                  выполняются сервером по фиксированным правилам, без ИИ.
+                  влияет на лимит и надбавку к ставке. Расчёты и рекомендация
+                  выполняются сервером по фиксированным правилам.
+                  Окончательное решение принимает сотрудник.
                   Показатели скоринга относятся к исходной заявке и базовой
                   ставке, а платёж предложения рассчитывается отдельно по
                   итоговой ставке.
@@ -670,15 +765,29 @@ export function BankWorkspace() {
                   </section>
                 )}
 
-              {application.officerComment && (
-                <section
-                  className={styles.section}
-                  aria-label="Сохранённое решение сотрудника"
-                >
-                  <h3>Комментарий сотрудника</h3>
-                  <p className={styles.comment}>{application.officerComment}</p>
-                </section>
-              )}
+              <section
+                className={styles.section}
+                aria-label="Сохранённое решение банка"
+              >
+                <h3>Сохранённое решение банка</h3>
+                <dl className={styles.parameters}>
+                  <div>
+                    <dt>Решение банка</dt>
+                    <dd>
+                      {application.decision
+                        ? applicationDecisionLabels[application.decision]
+                        : 'Не принято'}
+                    </dd>
+                  </div>
+                </dl>
+                <p>
+                  <strong>Комментарий сотрудника</strong>
+                </p>
+                <p className={styles.comment}>
+                  {application.officerComment?.trim() ||
+                    'Комментарий сотрудника не указан.'}
+                </p>
+              </section>
               {application.offer && (
                 <section
                   className={styles.section}
