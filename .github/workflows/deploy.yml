@@ -1,3 +1,4 @@
+
 name: Deploy
 
 on:
@@ -56,6 +57,8 @@ jobs:
       contents: read
       packages: read
     steps:
+      - uses: actions/checkout@v4
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         env:
@@ -89,67 +92,20 @@ jobs:
             mkdir -p "$APP_DIR"
             cd "$APP_DIR"
 
-            cat > docker-compose.prod.yml <<'YAML'
-            services:
-              postgres:
-                image: postgres:16
-                container_name: smart-credit-db
-                restart: unless-stopped
-                environment:
-                  POSTGRES_DB: credit_cabinet
-                  POSTGRES_USER: app
-                  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-                volumes:
-                  - pgdata:/var/lib/postgresql/data
-                healthcheck:
-                  test: ["CMD-SHELL", "pg_isready -U app -d credit_cabinet"]
-                  interval: 5s
-                  timeout: 5s
-                  retries: 5
-
-              backend:
-                image: ${IMAGE_PREFIX}/backend:${IMAGE_TAG:-latest}
-                container_name: smart-credit-backend
-                restart: unless-stopped
-                environment:
-                  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/credit_cabinet
-                  SPRING_DATASOURCE_USERNAME: app
-                  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-                  OPENAI_API_KEY: ${OPENAI_API_KEY}
-                  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://routerai.ru/api/v1}
-                  OPENAI_MODEL: ${OPENAI_MODEL:-nvidia/nemotron-3.5-super-vl}
-                  OPENAI_RESPONSE_FORMAT: json_object
-                  OPENAI_CONNECT_TIMEOUT: 10s
-                  OPENAI_READ_TIMEOUT: 100s
-                depends_on:
-                  postgres:
-                    condition: service_healthy
-
-              frontend:
-                image: ${IMAGE_PREFIX}/frontend:${IMAGE_TAG:-latest}
-                container_name: smart-credit-frontend
-                restart: unless-stopped
-                ports:
-                  - "${HTTP_PORT:-80}:80"
-                depends_on:
-                  - backend
-
-            volumes:
-              pgdata:
-            YAML
-
-            {
-              echo "IMAGE_PREFIX=$IMAGE_PREFIX"
-              echo "IMAGE_TAG=$IMAGE_TAG"
-              echo "HTTP_PORT=$HTTP_PORT"
-              echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
-              echo "OPENAI_API_KEY=$OPENAI_API_KEY"
-              echo "OPENAI_BASE_URL=$OPENAI_BASE_URL"
-              echo "OPENAI_MODEL=$OPENAI_MODEL"
-            } > .env
+            cat > .env <<EOF
+            IMAGE_PREFIX=$IMAGE_PREFIX
+            IMAGE_TAG=$IMAGE_TAG
+            HTTP_PORT=$HTTP_PORT
+            POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+            OPENAI_API_KEY=$OPENAI_API_KEY
+            OPENAI_BASE_URL=$OPENAI_BASE_URL
+            OPENAI_MODEL=$OPENAI_MODEL
+            EOF
 
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
             docker compose -p smart-credit -f docker-compose.prod.yml pull
             docker compose -p smart-credit -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
             docker compose -p smart-credit -f docker-compose.prod.yml ps
+
