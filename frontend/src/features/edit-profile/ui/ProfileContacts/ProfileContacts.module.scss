@@ -1,0 +1,27 @@
+.form,
+.identity {
+  display: grid;
+  gap: var(--gap-16);
+  min-inline-size: 0;
+}
+
+.title,
+.form p,
+.identity,
+.identity dd {
+  margin: var(--gap-0);
+  overflow-wrap: anywhere;
+}
+
+.identity {
+  gap: var(--gap-4);
+}
+
+.identity dt,
+.hint {
+  color: var(--color-light-text-secondary);
+}
+
+.status {
+  min-block-size: var(--gap-24);
+}
