@@ -3,7 +3,6 @@ import { NavLink, Link } from 'react-router-dom'
 import { Badge } from '@alfalab/core-components/badge'
 import { Button } from '@alfalab/core-components/button'
 import { Typography } from '@alfalab/core-components/typography'
-import { BellMIcon } from '@alfalab/icons/glyph/dist/BellMIcon'
 import { BriefcaseMIcon } from '@alfalab/icons/glyph/dist/BriefcaseMIcon'
 import { BurgerMIcon } from '@alfalab/icons/glyph/dist/BurgerMIcon'
 import { ChevronDownMIcon } from '@alfalab/icons/glyph/dist/ChevronDownMIcon'
@@ -15,6 +14,8 @@ import { WalletMIcon } from '@alfalab/icons/glyph/dist/WalletMIcon'
 import { useDashboard } from '@/entities/dashboard'
 import { useApplications } from '@/entities/loan-application'
 import { SessionActions } from '@/features/demo-session'
+import { ProfileContacts } from '@/features/edit-profile'
+import { NotificationCenter } from '@/features/read-notifications'
 import { ROUTES } from '@/shared/config'
 import { AlfaMark, Panel } from '@/shared/ui'
 import styles from './HeaderNavigation.module.scss'
@@ -73,9 +74,6 @@ export function HeaderNavigation() {
   >(null)
   const dashboard = useDashboard()
   const company = dashboard.error ? undefined : dashboard.data?.company
-  const count = dashboard.error
-    ? undefined
-    : dashboard.data?.unreadNotifications
   const companyName = company?.name ?? 'Кредитный кабинет'
   const companyDetails = company
     ? `ИНН ${company.inn}${company.okved ? ` · ОКВЭД ${company.okved}` : ''}`
@@ -133,21 +131,12 @@ export function HeaderNavigation() {
           </span>
         </Button>
         <div className={styles.headerActions}>
-          <span className={styles.notificationControl}>
-            <Button
-              view="transparent"
-              size={48}
-              aria-label={
-                count ? `Уведомления, непрочитанных: ${count}` : 'Уведомления'
-              }
-              onClick={() => setPanel('notifications')}
-            >
-              <BellMIcon aria-hidden="true" />
-            </Button>
-            {!!count && (
-              <span className={styles.notificationDot} aria-hidden="true" />
-            )}
-          </span>
+          <NotificationCenter
+            className={styles.notificationControl}
+            open={panel === 'notifications'}
+            onOpen={() => setPanel('notifications')}
+            onClose={closePanel}
+          />
           <SessionActions compact />
         </div>
       </header>
@@ -193,7 +182,7 @@ export function HeaderNavigation() {
             block
             onClick={() => setPanel('notifications')}
           >
-            Уведомления{count ? ` (${count})` : ''}
+            Уведомления
           </Button>
         </div>
       </Panel>
@@ -223,34 +212,8 @@ export function HeaderNavigation() {
               </Typography.Text>
             </div>
           )}
+          <ProfileContacts />
           <SessionActions />
-        </div>
-      </Panel>
-      <Panel
-        open={panel === 'notifications'}
-        title="Уведомления"
-        onClose={closePanel}
-      >
-        <div className={styles.panelContent}>
-          <Typography.Text view="secondary-medium" color="secondary">
-            {count === undefined
-              ? 'Счетчик недоступен'
-              : `Непрочитанных уведомлений: ${count}`}
-          </Typography.Text>
-          <Typography.TitleResponsive tag="h2" view="xsmall" font="system">
-            Уведомления
-          </Typography.TitleResponsive>
-          <Typography.Text tag="p" color="secondary">
-            Список уведомлений пока недоступен. Актуальный статус можно
-            проверить в разделе заявок.
-          </Typography.Text>
-          <Link
-            to={ROUTES.applications}
-            className={styles.textLink}
-            onClick={closePanel}
-          >
-            Перейти к заявкам
-          </Link>
         </div>
       </Panel>
     </>

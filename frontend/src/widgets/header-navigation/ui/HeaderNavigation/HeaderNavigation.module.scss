@@ -81,17 +81,6 @@
   display: inline-flex;
 }
 
-.notificationDot {
-  position: absolute;
-  inset-block-start: var(--gap-10);
-  inset-inline-end: var(--gap-10);
-  inline-size: var(--gap-8);
-  block-size: var(--gap-8);
-  border-radius: var(--border-radius-circle);
-  background: var(--color-light-accent-primary);
-  pointer-events: none;
-}
-
 .sidebar {
   grid-column: 1;
   display: flex;
@@ -177,11 +166,6 @@
   padding: var(--gap-20);
   border-radius: var(--border-radius-16);
   background: var(--color-light-base-bg-secondary);
-}
-
-.textLink {
-  color: var(--color-light-text-primary);
-  text-underline-offset: var(--gap-4);
 }
 
 @media (max-width: 63.99rem) {
