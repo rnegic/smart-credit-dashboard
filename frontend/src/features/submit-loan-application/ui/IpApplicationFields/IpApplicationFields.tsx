@@ -205,14 +205,16 @@ export function IpApplicationFields({
           </div>
           {onConfirm && (
             <div className={styles.confirmActions}>
-              <Button
-                type="button"
-                view="secondary"
-                size={32}
-                onClick={onConfirm}
-              >
-                {confirmed ? 'Подтверждено' : 'Это я'}
-              </Button>
+              {!confirmed && (
+                <Button
+                  type="button"
+                  view="secondary"
+                  size={32}
+                  onClick={onConfirm}
+                >
+                  Это я
+                </Button>
+              )}
               <Button type="button" view="text" size={32} onClick={editPrefill}>
                 Исправить данные
               </Button>

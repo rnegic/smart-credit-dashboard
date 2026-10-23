@@ -26,17 +26,14 @@ export function SessionActions({ compact = false }: SessionActionsProps) {
         type="button"
         view="transparent"
         size={compact ? 40 : 48}
-        aria-label={compact ? 'Выйти' : undefined}
-        title={compact ? 'Выйти' : undefined}
+        aria-label="Выйти из аккаунта"
+        title={compact ? 'Выйти из аккаунта' : undefined}
         loading={logout.isPending}
         disabled={transition.switching || logout.isPending}
         onClick={() => logout.mutate()}
+        leftAddons={<LogOutMIcon aria-hidden="true" focusable="false" />}
       >
-        {compact ? (
-          <LogOutMIcon aria-hidden="true" focusable="false" />
-        ) : (
-          'Выйти из аккаунта'
-        )}
+        {!compact && 'Выйти из аккаунта'}
       </Button>
       {logout.error && <p role="alert">{logout.error.message}</p>}
     </div>
