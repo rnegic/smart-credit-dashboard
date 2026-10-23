@@ -9,9 +9,17 @@ export function BankLayout() {
   return (
     <>
       <header className={styles.header}>
-        <AlfaMark />
-        <span>{session.data?.fullName} · Сотрудник банка</span>
-        <SessionActions compact />
+        <div className={styles.brand}>
+          <AlfaMark />
+          <span className={styles.product}>Кредитный кабинет</span>
+        </div>
+        <div className={styles.profile}>
+          <div className={styles.identity}>
+            <span>{session.data?.fullName}</span>
+            <span className={styles.role}>Сотрудник банка</span>
+          </div>
+          <SessionActions compact />
+        </div>
       </header>
       <BankPage />
     </>
