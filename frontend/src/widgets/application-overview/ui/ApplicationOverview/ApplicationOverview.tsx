@@ -203,7 +203,16 @@ export function ApplicationOverview({
     return <ApplicationForm headingTag="h2" />
   }
 
-  const finalRate = offer?.finalRate ?? application.finalRate
+  const awaitingClientChoice = application.status === 'OFFER_READY'
+  const officerComment = applicationView?.officerComment?.trim()
+  const officerCommentNotice = officerComment && (
+    <div className={`${styles.notice} ${styles.officerComment}`}>
+      <p>
+        <strong>Комментарий кредитного специалиста</strong>
+      </p>
+      <p>{officerComment}</p>
+    </div>
+  )
   const stages = getApplicationProgress(application.status)
   const activeStep = stages.findIndex((stage) => stage.state === 'CURRENT') + 1
   const declined = application.status === 'DECLINED'
@@ -217,7 +226,14 @@ export function ApplicationOverview({
       color={step.state === 'PENDING' ? 'secondary' : 'primary'}
       aria-current={step.state === 'CURRENT' ? 'step' : undefined}
     >
-      {step.title}
+      {awaitingClientChoice && step.code === 'DECISION' ? (
+        <span className={styles.pendingChoice}>
+          {step.title}
+          <span className={styles.choiceHint}>Ожидает выбора</span>
+        </span>
+      ) : (
+        step.title
+      )}
     </Typography.Text>
   ))
   // The kit keeps step buttons focusable in read-only mode; expose a semantic list instead.
@@ -236,9 +252,11 @@ export function ApplicationOverview({
               : step.state === 'DONE'
                 ? 'завершено'
                 : step.state === 'CURRENT'
-                  ? step.code === 'ISSUED'
-                    ? 'ожидает выдачи'
-                    : 'текущий этап'
+                  ? awaitingClientChoice
+                    ? 'ожидает вашего выбора'
+                    : step.code === 'ISSUED'
+                      ? 'ожидает выдачи'
+                      : 'текущий этап'
                   : 'предстоит'}
         </li>
       ))}
@@ -262,10 +280,6 @@ export function ApplicationOverview({
       <div>
         <dt>Предложенный срок</dt>
         <dd>{offer.termDays} дней</dd>
-      </div>
-      <div>
-        <dt>Итоговая ставка</dt>
-        <dd>{offer.finalRate}% годовых</dd>
       </div>
       <div>
         <dt>Ежемесячный платёж</dt>
@@ -292,19 +306,20 @@ export function ApplicationOverview({
           ? 'Банк предложил другие условия'
           : 'Банк подготовил предложение',
       description: canAcceptOffer
-        ? 'Сравните запрошенные и предложенные условия. Выберите предложение банка в подробностях заявки, затем подтвердите подписание.'
+        ? 'Ожидаем вашего выбора. Сравните запрошенные и предложенные условия. Выберите предложение банка в подробностях заявки, затем подтвердите подписание.'
         : 'Принятие предложения недоступно. Проверьте его условия и статус в подробностях заявки.',
     },
     DECLINED: {
       title: 'В заявке отказано',
-      description:
-        !providedApplication && applications.isError
-          ? applications.error.message
-          : !providedApplication && applications.isPending
-            ? 'Загружаем причину отказа…'
-            : applicationView?.officerComment?.trim() ||
-              applicationView?.aiComment?.trim() ||
-              'Причина отказа не указана.',
+      description: officerComment
+        ? 'Причина отказа указана в комментарии кредитного специалиста.'
+        : applicationView?.aiComment?.trim()
+          ? `Автоматический комментарий: ${applicationView.aiComment.trim()}`
+          : !providedApplication && applications.isError
+            ? applications.error.message
+            : !providedApplication && applications.isPending
+              ? 'Загружаем причину отказа…'
+              : 'Причина отказа не указана.',
     },
     ACCEPTED: {
       title: 'Предложение принято',
@@ -332,7 +347,13 @@ export function ApplicationOverview({
       <section className={styles.card} aria-labelledby={headingId}>
         <div className={styles.topline}>
           <span
-            className={`${styles.status}${declined ? ` ${styles.declined}` : ''}`}
+            className={`${styles.status}${
+              declined
+                ? ` ${styles.declined}`
+                : awaitingClientChoice
+                  ? ` ${styles.warning}`
+                  : ''
+            }`}
           >
             {application.status === 'IN_REVIEW' && (
               <ClockMIcon aria-hidden="true" />
@@ -361,9 +382,16 @@ export function ApplicationOverview({
             </span>
           </Typography.TitleResponsive>
           <Typography.Text tag="p" color="secondary">
+            Дата создания заявки:{' '}
+            <time dateTime={application.createdAt}>
+              {formatDate(application.createdAt)}
+            </time>
+          </Typography.Text>
+          <Typography.Text tag="p" color="secondary">
             Запрошенный срок: {application.termDays} дней
             {application.purpose && ` · ${application.purpose}`}
           </Typography.Text>
+          {officerCommentNotice}
         </div>
 
         {application.status === 'OFFER_READY' && (
@@ -385,7 +413,7 @@ export function ApplicationOverview({
             )}
           </div>
         )}
-        <div className={styles.progress} aria-label="Этапы рассмотрения заявки">
+        <div className={styles.progress} aria-label="Этапы заявки">
           {progressDescription}
           <div className={styles.desktopSteps} inert aria-hidden="true">
             <Steps
@@ -403,7 +431,11 @@ export function ApplicationOverview({
           </div>
           <div className={styles.mobileSteps} inert aria-hidden="true">
             <Typography.Text view="secondary-medium" color="secondary">
-              {`Этап ${activeStep} из ${stages.length} · ${stages[activeStep - 1].title}${declined ? ' · Отказ' : ''}`}
+              <span
+                className={awaitingClientChoice ? styles.pendingChoice : undefined}
+              >
+                {`Этап ${activeStep} из ${stages.length} · ${stages[activeStep - 1].title}${declined ? ' · Отказ' : awaitingClientChoice ? ' · Ожидает выбора' : ''}`}
+              </span>
             </Typography.Text>
             <Steps
               activeStep={activeStep}
@@ -471,7 +503,16 @@ export function ApplicationOverview({
           <Typography.TitleResponsive tag="h2" view="medium" font="system">
             Запрошено: {formatMoney(application.amount)}
           </Typography.TitleResponsive>
+          {officerCommentNotice}
           <dl className={styles.parameters}>
+            <div>
+              <dt>Дата создания заявки</dt>
+              <dd>
+                <time dateTime={application.createdAt}>
+                  {formatDate(application.createdAt)}
+                </time>
+              </dd>
+            </div>
             <div>
               <dt>Цель</dt>
               <dd>{application.purpose || 'Не указана'}</dd>
@@ -480,30 +521,18 @@ export function ApplicationOverview({
               <dt>Запрошенный срок</dt>
               <dd>{application.termDays} дней</dd>
             </div>
+            {application.status === 'ACCEPTED' && offer && (
+              <div>
+                <dt>Итоговая ставка</dt>
+                <dd>{offer.finalRate}% годовых</dd>
+              </div>
+            )}
             <div>
-              <dt>Базовая ставка</dt>
-              <dd>
-                {application.rate == null
-                  ? 'Не указана'
-                  : `${application.rate}% годовых`}
-              </dd>
-            </div>
-            <div>
-              <dt>Итоговая ставка</dt>
-              <dd>
-                {finalRate == null ? 'Не определена' : `${finalRate}% годовых`}
-              </dd>
-            </div>
-            <div>
-              <dt>Заявка отправлена</dt>
-              <dd>{formatDate(application.createdAt)}</dd>
-            </div>
-            <div>
-              <dt>Текущий этап</dt>
+              <dt>Статус заявки</dt>
               <dd>{applicationStatusLabels[application.status]}</dd>
             </div>
             <div>
-              <dt>Решение</dt>
+              <dt>Решение банка</dt>
               <dd>
                 {application.decision
                   ? applicationDecisionLabels[application.decision]
@@ -542,7 +571,7 @@ export function ApplicationOverview({
                   <dd>{scoring.amountToRevenue}</dd>
                 </div>
                 <div>
-                  <dt>Расчётный платёж по базовой ставке</dt>
+                  <dt>Расчётный платёж по заявке</dt>
                   <dd>
                     {scoring.newMonthlyPayment == null
                       ? 'Нет расчёта'
@@ -559,7 +588,7 @@ export function ApplicationOverview({
                 </div>
               </dl>
               <Typography.Text tag="p" color="secondary">
-                Скоринг рассчитан сервером для исходной заявки по базовой ставке.
+                Скоринг рассчитан сервером для исходной заявки.
                 Условия предложения указаны отдельно.
               </Typography.Text>
             </>

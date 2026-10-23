@@ -28,8 +28,9 @@ function load(relative, dependencies = {}) {
 }
 
 const { getApplicationProgress } = load('entities/loan-application/get-application-progress.ts')
+const { formatDate } = load('shared/lib/format-date.ts')
 const codes = ['SUBMITTED', 'REVIEW', 'DECISION', 'OFFER', 'SIGNING', 'ISSUED']
-const titles = ['Заявка', 'Проверка', 'Решение', 'Предложение', 'Подписание', 'Выдача']
+const titles = ['Заявка', 'Проверка', 'Статус', 'Предложение', 'Подписание', 'Выдача']
 const application = {
   id: 7, amount: 100000, termDays: 30, rate: 24.5, purpose: 'Оборотные средства',
   decision: 'ALTERNATIVE_OFFER', finalRate: null,
@@ -50,7 +51,7 @@ const Button = ({ children }) => React.createElement('button', null, children)
 test('all real statuses map to exactly six ordered product stages', () => {
   const states = {
     IN_REVIEW: ['DONE', 'CURRENT', 'PENDING', 'PENDING', 'PENDING', 'PENDING'],
-    OFFER_READY: ['DONE', 'DONE', 'DONE', 'CURRENT', 'PENDING', 'PENDING'],
+    OFFER_READY: ['DONE', 'DONE', 'CURRENT', 'PENDING', 'PENDING', 'PENDING'],
     ACCEPTED: ['DONE', 'DONE', 'DONE', 'DONE', 'DONE', 'CURRENT'],
     DECLINED: ['DONE', 'DONE', 'CURRENT', 'PENDING', 'PENDING', 'PENDING'],
   }
@@ -70,12 +71,12 @@ test('progress does not share mutable results or mark issuance complete', () => 
   assert.equal(second[5].state, 'CURRENT')
 })
 
-function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed = false, offerOverride = {}, officerComment = 'Недостаточно данных о доходах' } = {}) {
+function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed = false, applicationsFailed = false, applicationOverride = {}, offerOverride = {}, officerComment = 'Недостаточно данных о доходах', aiComment = 'Автоматическое заключение скоринга', activeLoan = null } = {}) {
   const renderedSteps = []
   const current = { ...application, status, decision: {
     IN_REVIEW: 'MANUAL_REVIEW', OFFER_READY: 'ALTERNATIVE_OFFER', ACCEPTED: 'ALTERNATIVE_OFFER', DECLINED: 'DECLINED',
-  }[status] }
-  const view = { ...current, offer: { ...offer, ...offerOverride }, officerComment, aiComment: 'Недостаточно данных о доходах' }
+  }[status], ...applicationOverride }
+  const view = { ...current, offer: offerOverride === null ? null : { ...offer, ...offerOverride }, officerComment, aiComment }
   const ApplicationForm = () => null
   const { ApplicationOverview } = load('widgets/application-overview/ui/ApplicationOverview/ApplicationOverview.tsx', {
     react: { ...React, useId: () => 'application-heading', useRef: () => ({ current: null }), useState: () => [true, () => {}] },
@@ -90,21 +91,25 @@ function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed
     '@alfalab/icons/glyph/dist/ClockMIcon': { ClockMIcon: () => null },
     '@/entities/dashboard': { useDashboard: () => ({
       isPending: false, isError: failed, error: failed ? new Error('Ошибка загрузки') : null,
-      data: { currentApplication: empty ? null : current, activeLoan: provided ? { id: 99 } : null,
+      data: { currentApplication: empty ? null : current, activeLoan: activeLoan ?? (provided ? { id: 99 } : null),
         stages: codes.slice(0, 4).map((code) => ({ code, state: 'DONE' })) },
     }) },
     '@/entities/loan-application': {
       getApplicationProgress,
       applicationStatusLabels: { IN_REVIEW: 'На рассмотрении', OFFER_READY: 'Предложение банка', ACCEPTED: 'Предложение принято', DECLINED: 'Отказ по заявке' },
       applicationDecisionLabels: { INFO_REQUIRED: 'Нужны дополнительные сведения', DECLINED: 'Отказ', APPROVED: 'Одобрено', ALTERNATIVE_OFFER: 'Предложены другие условия', MANUAL_REVIEW: 'Ручная проверка' },
-      useApplications: () => ({ isPending: false, isError: false, data: [view] }),
+      useApplications: () => ({
+        isPending: false, isError: applicationsFailed,
+        error: applicationsFailed ? new Error('Не удалось обновить заявки') : null,
+        data: [{ ...view, id: 8, officerComment: 'Комментарий другой заявки' }, view],
+      }),
     },
     '@/features/accept-offer': { AcceptOffer: () => null },
     '@/features/submit-loan-application': { ApplicationForm },
     '@/shared/config': { ROUTES: { documents: '/documents', credits: '/credits' } },
-    '@/shared/lib': { formatDate: (value) => value, formatMoney: (value) => String(value) },
+    '@/shared/lib': { formatDate, formatMoney: (value) => String(value) },
     '@/shared/ui': { Panel: ({ children }) => React.createElement('aside', null, children) },
-    './ApplicationOverview.module.scss': { default: styles },
+    './ApplicationOverview.module.scss': { __esModule: true, default: styles },
   })
   const element = ApplicationOverview({ application: provided ? view : undefined })
   return { element, html: renderToStaticMarkup(element), renderedSteps, ApplicationForm }
@@ -128,7 +133,7 @@ test('overview and details expose six semantic stages and inert visual Steps', (
     assert.ok(!html.includes('мес.'))
     if (status === 'OFFER_READY') {
       assert.ok(html.includes(`${offer.termDays} дней`))
-      assert.ok(html.includes(`${offer.finalRate}% годовых`))
+      assert.ok(!html.includes(`${offer.finalRate}% годовых`))
       assert.ok(html.includes('Срок изменен с 30 до 60 дней'))
       const rateOnly = overview({ status, offerOverride: { amount: application.amount, termDays: application.termDays } })
       assert.ok(rateOnly.html.includes('Банк предложил другие условия'))
@@ -138,17 +143,103 @@ test('overview and details expose six semantic stages and inert visual Steps', (
 
 test('decline is a negative decision, not waiting for an offer', () => {
   const { html, renderedSteps } = overview({ status: 'DECLINED', officerComment: null })
-  assert.ok(html.includes('Решение: отказ по заявке'))
+  assert.ok(html.includes('Статус: отказ по заявке'))
   assert.ok(html.includes('Предложение: не выполняется: заявка отклонена'))
-  assert.ok(html.includes('Недостаточно данных о доходах'))
+  assert.ok(html.includes('Автоматический комментарий: Автоматическое заключение скоринга'))
   const manual = overview({ status: 'DECLINED', officerComment: 'Отказ сотрудника' })
   assert.ok(manual.html.includes('Отказ сотрудника'))
-  assert.ok(!manual.html.includes('Недостаточно данных о доходах'))
+  assert.ok(!manual.html.includes('Автоматическое заключение скоринга'))
   assert.ok(!html.includes('Предложение для этой заявки пока недоступно'))
   for (const props of renderedSteps) {
     assert.equal(props.activeStep, 3)
     assert.equal(props.checkIsStepError(3), true)
     assert.equal(props.checkIsStepError(4), false)
+  }
+})
+
+test('approved and alternative offers keep status pending client choice with warning styling', () => {
+  for (const decision of ['APPROVED', 'ALTERNATIVE_OFFER']) {
+    const { html, renderedSteps } = overview({
+      status: 'OFFER_READY',
+      applicationOverride: { decision, amount: 1500000 },
+      offerOverride: { amount: 1500000, termDays: application.termDays },
+    })
+    assert.ok(html.includes('class="status warning"'))
+    assert.ok(html.includes('class="pendingChoice">Статус'))
+    assert.ok(html.includes('Статус: ожидает вашего выбора'))
+    assert.ok(html.includes('Этап 3 из 6 · Статус · Ожидает выбора'))
+    assert.ok(!html.includes('Статус: завершено'))
+    assert.ok(html.includes(decision === 'APPROVED' ? 'Банк подготовил предложение' : 'Банк предложил другие условия'))
+    for (const props of renderedSteps) {
+      assert.equal(props.activeStep, 3)
+      assert.equal(props.checkIsStepPositive(2), true)
+      assert.equal(props.checkIsStepPositive(3), false)
+      assert.equal(props.checkIsStepPositive(4), false)
+      assert.equal(props.checkIsStepError(3), false)
+    }
+  }
+  const css = readFileSync(path.join(root, 'widgets/application-overview/ui/ApplicationOverview/ApplicationOverview.module.scss'), 'utf8')
+  assert.match(css, /\.warning,\s*\.pendingChoice\s*\{\s*background: var\(--color-light-status-muted-attention\)/)
+})
+
+test('cards, hero and details show the creation date separately from offer expiry', () => {
+  for (const provided of [true, false]) {
+    for (const status of ['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']) {
+      const { html } = overview({ status, provided })
+      for (const section of html.split('<aside>')) {
+        assert.ok(section.includes('Дата создания заявки'))
+        assert.ok(section.includes(`<time dateTime="${application.createdAt}">${formatDate(application.createdAt)}</time>`))
+        if (status === 'OFFER_READY') {
+          assert.ok(section.includes(`Предложение действительно до</dt><dd>${formatDate(offer.validUntil)}</dd>`))
+        }
+      }
+    }
+  }
+})
+
+test('selected application officer comments stay prominent and separate from automated comments in every status', () => {
+  const officerComment = '  Условия согласованы сотрудником.\nПроверьте документы.  '
+  for (const provided of [true, false]) {
+    for (const status of ['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']) {
+      const { html } = overview({ status, provided, officerComment, applicationsFailed: true })
+      for (const section of html.split('<aside>')) {
+        assert.ok(section.includes('<strong>Комментарий кредитного специалиста</strong>'))
+        assert.ok(section.includes(`<p>${officerComment.trim()}</p>`))
+      }
+      assert.ok(!html.includes('Автоматическое заключение скоринга'))
+      assert.ok(!html.includes('Комментарий другой заявки'))
+    }
+  }
+  for (const officerComment of [null, ' \n ']) {
+    const { html } = overview({ status: 'DECLINED', officerComment })
+    assert.ok(!html.includes('<strong>Комментарий кредитного специалиста</strong>'))
+    assert.ok(html.includes('Автоматический комментарий: Автоматическое заключение скоринга'))
+  }
+  const missing = overview({ status: 'DECLINED', officerComment: null, aiComment: ' ' })
+  assert.ok(missing.html.includes('Причина отказа не указана.'))
+})
+
+test('no base or final rate leaks into application summaries or details before signing', () => {
+  for (const provided of [true, false]) {
+    for (const status of ['IN_REVIEW', 'OFFER_READY', 'DECLINED']) {
+      const { html } = overview({ status, provided, applicationOverride: { finalRate: 99.75 } })
+      assert.ok(!html.includes('% годовых'))
+      assert.ok(!html.includes('Базовая ставка'))
+      assert.ok(!html.includes('Итоговая ставка'))
+      assert.ok(!html.includes('99.75'))
+      assert.ok(!html.includes(String(offer.finalRate)))
+    }
+  }
+})
+
+test('signed application rate comes only from its offer, never from the nullable root rate', () => {
+  for (const finalRate of [null, 99.75]) {
+    const { html } = overview({ status: 'ACCEPTED', applicationOverride: { finalRate }, offerOverride: { status: 'ACCEPTED' } })
+    assert.ok(html.includes(`Итоговая ставка</dt><dd>${offer.finalRate}% годовых`))
+    assert.ok(!html.includes('99.75'))
+    assert.ok(!html.includes(`${application.rate}% годовых`))
+    const missingOffer = overview({ status: 'ACCEPTED', applicationOverride: { finalRate }, offerOverride: null })
+    assert.ok(!missingOffer.html.includes('% годовых'))
   }
 })
 
@@ -161,6 +252,15 @@ test('an accepted application awaits issuance even with an unrelated dashboard l
     assert.equal(props.checkIsStepPositive(5), true)
     assert.equal(props.checkIsStepPositive(6), false)
   }
+})
+
+test('active loan retains its own ratePercent and termMonths', () => {
+  const { html } = overview({
+    provided: false, status: 'ACCEPTED',
+    activeLoan: { id: 99, remainingBalance: 70000, principal: 100000, monthlyPayment: 5000, ratePercent: 18.5, termMonths: 24 },
+  })
+  assert.ok(html.includes('Ставка 18.5% годовых · Срок: 24 мес.'))
+  assert.ok(!html.includes(`${offer.finalRate}% годовых`))
 })
 
 test('no-application hero composes the public form directly with an h2 heading', () => {
@@ -189,7 +289,7 @@ function acceptance({ expired = false, error = null } = {}) {
     '@alfalab/core-components/typography': { Typography },
     '@/shared/api': { useApiScope: () => 'client-session', apiEmpty: async (...args) => { requests.push(args) } },
     '@/shared/lib': { formatMoney: (value) => String(value) },
-    './AcceptOffer.module.scss': { default: styles },
+    './AcceptOffer.module.scss': { __esModule: true, default: styles },
   })
   return {
     render: () => AcceptOffer({ offer: { ...offer, validUntil: expired ? '2000-01-01' : offer.validUntil }, application }),
@@ -200,7 +300,10 @@ function acceptance({ expired = false, error = null } = {}) {
 test('choosing conditions does not send a request; confirmation sends only the real sign endpoint once', () => {
   const h = acceptance()
   let element = h.render()
-  assert.ok(renderToStaticMarkup(element).includes('Выбор предложения'))
+  const choiceHtml = renderToStaticMarkup(element)
+  assert.ok(choiceHtml.includes('Выбор предложения'))
+  assert.ok(!choiceHtml.includes('% годовых'))
+  assert.ok(!choiceHtml.includes(String(offer.finalRate)))
   React.Children.toArray(element.props.children).find((child) => child.type === Button).props.onClick()
   assert.equal(h.requests.length, 0)
   element = h.render()
@@ -215,6 +318,9 @@ test('choosing conditions does not send a request; confirmation sends only the r
   assert.equal(h.requests.length, 1)
   assert.equal(h.requests[0][0], '/api/offers/9/sign')
   assert.equal(h.requests[0][1].method, 'POST')
+  const pendingButton = React.Children.toArray(h.render().props.children).find((child) => child.type === Button)
+  assert.equal(pendingButton.props.disabled, true)
+  assert.equal(pendingButton.props.loading, true)
 })
 
 test('expired offers cannot be signed and request errors remain visible without success fallback', () => {
@@ -234,7 +340,9 @@ test('returning to conditions cancels only the local choice without signing', ()
   buttons[0].props.onClick()
   buttons = React.Children.toArray(h.render().props.children).filter((child) => child.type === Button)
   buttons[1].props.onClick()
-  assert.ok(renderToStaticMarkup(h.render()).includes('Выбор предложения'))
+  const html = renderToStaticMarkup(h.render())
+  assert.ok(html.includes('Выбор предложения'))
+  assert.ok(!html.includes('% годовых'))
   assert.equal(h.requests.length, 0)
 })
 
@@ -243,6 +351,7 @@ test('successful signing confirms acceptance but not issued funds', () => {
   h.mutation.isSuccess = true
   const html = renderToStaticMarkup(h.render())
   assert.ok(html.includes('Предложение принято'))
+  assert.ok(html.includes(`Итоговая ставка: ${offer.finalRate}% годовых`))
   assert.ok(html.includes('Ожидаем подтверждения выдачи. Деньги еще не зачислены.'))
   assert.ok(!html.includes('<button'))
 })

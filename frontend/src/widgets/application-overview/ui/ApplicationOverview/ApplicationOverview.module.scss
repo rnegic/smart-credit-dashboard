@@ -36,6 +36,22 @@
   background: var(--color-light-status-muted-negative);
 }
 
+.warning,
+.pendingChoice {
+  background: var(--color-light-status-muted-attention);
+}
+
+.pendingChoice {
+  display: inline-block;
+  padding: var(--gap-4) var(--gap-8);
+  border-radius: var(--border-radius-8);
+  color: var(--color-light-text-primary);
+}
+
+.choiceHint {
+  display: block;
+}
+
 .heading {
   display: flex;
   flex-direction: column;
@@ -144,6 +160,17 @@
   padding: var(--gap-20);
   border-radius: var(--border-radius-16);
   background: var(--color-light-base-bg-secondary);
+}
+
+.officerComment {
+  display: grid;
+  gap: var(--gap-8);
+  overflow-wrap: anywhere;
+}
+
+.officerComment p {
+  margin: var(--gap-0);
+  white-space: pre-wrap;
 }
 
 @media (max-width: 74.99rem) {
