@@ -7,7 +7,58 @@ import { WalletMIcon } from '@alfalab/icons/glyph/dist/WalletMIcon'
 import { useDashboard } from '@/entities/dashboard'
 import { ROUTES } from '@/shared/config'
 import { formatDate, formatMoney } from '@/shared/lib'
+import { Skeleton } from '@/shared/ui'
 import styles from './CreditSummary.module.scss'
+
+const skeletonRows = [0, 1, 2, 3, 4]
+
+function CreditSummarySkeleton() {
+  const headingId = useId()
+
+  return (
+    <section
+      className={styles.card}
+      aria-labelledby={headingId}
+      aria-busy="true"
+    >
+      <Typography.TitleResponsive
+        tag="h2"
+        id={headingId}
+        view="xsmall"
+        font="system"
+        weight="bold"
+      >
+        Кредиты и лимиты
+      </Typography.TitleResponsive>
+      <div className={styles.body}>
+        <Skeleton
+          width="var(--gap-48)"
+          height="var(--gap-48)"
+          radius="var(--border-radius-16)"
+        />
+        <Skeleton width="min(85%, 18rem)" height="1.25rem" />
+        <div className={styles.skeletonParameters}>
+          {skeletonRows.map((row) => (
+            <div className={styles.skeletonParameter} key={row}>
+              <Skeleton width="42%" height="0.875rem" />
+              <Skeleton width="25%" height="0.875rem" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Skeleton
+          width="7rem"
+          height="2.5rem"
+          radius="var(--border-radius-12)"
+        />
+      </div>
+      <span className={styles.screenReaderOnly} role="status">
+        Загружаем сведения о кредите…
+      </span>
+    </section>
+  )
+}
 
 /** Summarizes the active loan and next payment returned by the dashboard API. */
 export function CreditSummary() {
@@ -16,8 +67,12 @@ export function CreditSummary() {
   const dashboard = useDashboard()
   const loan = dashboard.data?.activeLoan
   const payment = dashboard.data?.nextPayment
-  const unavailable =
-    dashboard.isPending || dashboard.isError || !dashboard.data
+
+  if (dashboard.isPending || (!dashboard.isError && !dashboard.data)) {
+    return <CreditSummarySkeleton />
+  }
+
+  const unavailable = dashboard.isError || !dashboard.data
 
   return (
     <section

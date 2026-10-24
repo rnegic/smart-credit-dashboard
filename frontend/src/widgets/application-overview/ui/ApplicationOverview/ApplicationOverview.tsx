@@ -21,12 +21,77 @@ import { ApplicationForm } from '@/features/submit-loan-application'
 import { ROUTES } from '@/shared/config'
 import { useApiScope } from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
-import { Panel } from '@/shared/ui'
+import { Panel, Skeleton } from '@/shared/ui'
 import styles from './ApplicationOverview.module.scss'
+
+const skeletonRows = [0, 1, 2, 3]
 
 /** Selects the dashboard hero or displays a specific application in the list. */
 export interface ApplicationOverviewProps {
   application?: ApplicationView
+}
+
+function ApplicationOverviewSkeleton() {
+  const headingId = useId()
+
+  return (
+    <section
+      className={styles.card}
+      aria-labelledby={headingId}
+      aria-busy="true"
+    >
+      <div className={styles.topline}>
+        <Skeleton
+          width="7.5rem"
+          height="1.75rem"
+          radius="var(--border-radius-pill)"
+        />
+        <Skeleton width="3.5rem" height="1rem" />
+      </div>
+      <div className={styles.heading}>
+        <Typography.TitleResponsive
+          id={headingId}
+          tag="h2"
+          view="large"
+          font="system"
+          weight="bold"
+        >
+          Обзор кредита и заявки
+        </Typography.TitleResponsive>
+        <Skeleton width="min(100%, 24rem)" height="2.25rem" />
+        <Skeleton width="min(70%, 18rem)" height="1rem" />
+      </div>
+      <div className={styles.skeletonBody}>
+        <div className={styles.skeletonSteps}>
+          {skeletonRows.map((row) => (
+            <div className={styles.skeletonStep} key={row}>
+              <Skeleton width="1.5rem" height="1.5rem" radius="50%" />
+              <Skeleton width="100%" height="0.75rem" />
+            </div>
+          ))}
+        </div>
+        <div className={styles.skeletonParameters}>
+          {skeletonRows.map((row) => (
+            <div className={styles.skeletonParameter} key={row}>
+              <Skeleton width="55%" height="0.875rem" />
+              <Skeleton width="30%" height="0.875rem" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className={styles.bottomline}>
+        <Skeleton width="min(60%, 18rem)" height="1rem" />
+        <Skeleton
+          width="8.5rem"
+          height="3rem"
+          radius="var(--border-radius-12)"
+        />
+      </div>
+      <span className={styles.screenReaderOnly} role="status">
+        Загружаем данные…
+      </span>
+    </section>
+  )
 }
 
 /** Shows server-backed application progress and strictly related offer terms. */
@@ -87,37 +152,26 @@ export function ApplicationOverview({
     offerIsValid &&
     (providedApplication != null || !applications.isError)
 
-  if (
-    !providedApplication &&
-    !detailsOpen &&
-    (dashboard.isPending || dashboard.isError || !dashboard.data)
-  ) {
-    return (
-      <section
-        className={styles.card}
-        aria-labelledby={headingId}
-        aria-busy={dashboard.isPending}
-      >
-        <div className={styles.heading}>
-          <Typography.TitleResponsive
-            id={headingId}
-            tag="h2"
-            view="large"
-            font="system"
-            weight="bold"
-          >
-            Обзор кредита и заявки
-          </Typography.TitleResponsive>
-        </div>
-        <div
-          className={styles.progress}
-          role={dashboard.isError ? 'alert' : 'status'}
-        >
-          <Typography.Text tag="p" color="secondary">
-            {dashboard.isError ? dashboard.error.message : 'Загружаем данные…'}
-          </Typography.Text>
-        </div>
-        {dashboard.isError && (
+  if (!providedApplication && !detailsOpen) {
+    if (dashboard.isError) {
+      return (
+        <section className={styles.card} aria-labelledby={headingId}>
+          <div className={styles.heading}>
+            <Typography.TitleResponsive
+              id={headingId}
+              tag="h2"
+              view="large"
+              font="system"
+              weight="bold"
+            >
+              Обзор кредита и заявки
+            </Typography.TitleResponsive>
+          </div>
+          <div className={styles.progress} role="alert">
+            <Typography.Text tag="p" color="secondary">
+              {dashboard.error.message}
+            </Typography.Text>
+          </div>
           <div className={styles.bottomline}>
             <Button
               view="secondary"
@@ -129,9 +183,13 @@ export function ApplicationOverview({
               Повторить загрузку
             </Button>
           </div>
-        )}
-      </section>
-    )
+        </section>
+      )
+    }
+
+    if (dashboard.isPending || !dashboard.data) {
+      return <ApplicationOverviewSkeleton />
+    }
   }
 
   if (showLoan && loan) {
@@ -400,18 +458,10 @@ export function ApplicationOverview({
                   : 'Банк пока не передал расчет'}
               </dd>
             </div>
-            <div>
-              <dt>Предварительная базовая ставка</dt>
-              <dd>
-                {application.rate == null
-                  ? 'Требуется индивидуальное рассмотрение'
-                  : `${application.rate}% годовых`}
-              </dd>
-            </div>
           </dl>
           <Typography.Text tag="p" view="primary-small" color="secondary">
-            Масштаб не является классом риска. Ставка рассчитана сервером для
-            исходной заявки; итоговые условия определяет банк в предложении.
+            Масштаб не является классом риска. Итоговые условия определяет банк в
+            предложении.
           </Typography.Text>
         </div>
       )}
@@ -565,8 +615,6 @@ export function ApplicationOverview({
                     {scoring?.businessScale
                       ? businessScaleLabels[scoring.businessScale]
                       : 'Ожидает расчета банка'}
-                    {application.rate != null &&
-                      ` · Предварительная ставка ${application.rate}% годовых`}
                   </Typography.Text>
                 )}
                 {officerCommentNotice}

@@ -36,6 +36,7 @@ function load(relative, dependencies = {}, globals = {}) {
 const { getApplicationProgress } = load('entities/loan-application/get-application-progress.ts')
 const { formatDate } = load('shared/lib/format-date.ts')
 const { formatMoney } = load('shared/lib/format-money.ts')
+const getApplicationPurposeLabel = (value) => value ?? 'Не указана'
 const codes = ['SUBMITTED', 'REVIEW', 'DECISION', 'OFFER', 'SIGNING', 'ISSUED']
 const titles = ['Заявка', 'Проверка', 'Статус', 'Предложение', 'Подписание', 'Выдача']
 const application = {
@@ -63,6 +64,11 @@ const Panel = ({ open, children, footer }) => open ? React.createElement('aside'
   React.createElement('div', { 'data-panel-content': true }, children),
   React.createElement('footer', null, footer),
 ) : null
+const Skeleton = ({ className, width, height, radius }) => React.createElement('span', {
+  className: className ?? 'skeleton',
+  'aria-hidden': true,
+  style: { inlineSize: width, blockSize: height, borderRadius: radius },
+})
 
 function nodes(element, predicate) {
   const result = []
@@ -289,7 +295,7 @@ function acceptance({ view = makeView(), query = {}, props = {}, refetches = [],
       useMutation,
     },
     '@alfalab/core-components/button': { Button },
-    '@/entities/loan-application': { useApplications: h.useApplications },
+    '@/entities/loan-application': { useApplications: h.useApplications, getApplicationPurposeLabel },
     '@/shared/api': { ApiError, useApiScope: () => h.scope, apiEmpty: async (url, options) => {
       h.events.push('POST')
       h.requests.push({ url, ...options })
@@ -356,6 +362,7 @@ function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed
     }) },
     '@/entities/loan-application': {
       getApplicationProgress,
+      getApplicationPurposeLabel,
       applicationStatusLabels: { IN_REVIEW: 'На рассмотрении', OFFER_READY: 'Предложение банка', ACCEPTED: 'Предложение принято', DECLINED: 'Отказ по заявке' },
       applicationDecisionLabels: { INFO_REQUIRED: 'Нужны дополнительные сведения', DECLINED: 'Отказ', APPROVED: 'Одобрено', ALTERNATIVE_OFFER: 'Предложены другие условия', MANUAL_REVIEW: 'Ручная проверка' },
       useApplications: accept.useApplications,
@@ -365,7 +372,7 @@ function overview({ status = 'IN_REVIEW', provided = true, empty = false, failed
     '@/shared/api': { useApiScope: () => h.scope },
     '@/shared/config': { ROUTES: { documents: '/documents', credits: '/credits' } },
     '@/shared/lib': { formatDate, formatMoney },
-    '@/shared/ui': { Panel },
+    '@/shared/ui': { Panel, Skeleton },
     './ApplicationOverview.module.scss': { __esModule: true, default: styles },
   }, { Date: clock.Date })
   h.render = () => {
@@ -760,6 +767,7 @@ test('loading and failed dashboards do not render a fake ready-offer hero', () =
     const h = overview({ provided: false, status: 'OFFER_READY', pending, failed: !pending })
     assert.ok(h.html.includes(pending ? 'Загружаем данные' : 'Ошибка загрузки'))
     assert.ok(h.html.includes(pending ? 'aria-busy="true"' : 'role="alert"'))
+    if (pending) assert.ok(h.html.includes('class="skeleton" aria-hidden="true"'))
     assert.ok(!h.html.includes('Банк предлагает'))
     assert.ok(!h.html.includes(formatMoney(offer.amount)))
     assert.equal(h.panel, undefined)

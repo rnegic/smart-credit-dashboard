@@ -17,7 +17,7 @@ import { SessionActions } from '@/features/demo-session'
 import { ProfileCompany, ProfileContacts } from '@/features/edit-profile'
 import { NotificationCenter } from '@/features/read-notifications'
 import { ROUTES } from '@/shared/config'
-import { AlfaMark, Panel } from '@/shared/ui'
+import { AlfaMark, Panel, Skeleton } from '@/shared/ui'
 import styles from './HeaderNavigation.module.scss'
 
 const items = [
@@ -74,6 +74,7 @@ export function HeaderNavigation() {
   >(null)
   const dashboard = useDashboard()
   const company = dashboard.error ? undefined : dashboard.data?.company
+  const companyPending = !company && !dashboard.error
   const companyName = company?.name ?? 'Кредитный кабинет'
   const companyDetails = company
     ? `ИНН ${company.inn}${company.okved ? ` · ОКВЭД ${company.okved}` : ''}`
@@ -109,26 +110,48 @@ export function HeaderNavigation() {
           size={56}
           className={styles.companyButton}
           labelClassName={styles.companyLabel}
+          aria-label={
+            companyPending ? 'Загружаем данные компании' : undefined
+          }
           onClick={() => setPanel('profile')}
           leftAddons={
-            <span className={styles.avatar}>
-              <BriefcaseMIcon aria-hidden="true" />
-            </span>
+            companyPending ? (
+              <Skeleton
+                width="2.5rem"
+                height="2.5rem"
+                radius="var(--border-radius-12)"
+              />
+            ) : (
+              <span className={styles.avatar}>
+                <BriefcaseMIcon aria-hidden="true" />
+              </span>
+            )
           }
-          rightAddons={<ChevronDownMIcon aria-hidden="true" />}
+          rightAddons={
+            companyPending ? undefined : (
+              <ChevronDownMIcon aria-hidden="true" />
+            )
+          }
         >
-          <span className={styles.companyText}>
-            <Typography.Text view="primary-small" weight="bold">
-              {companyName}
-            </Typography.Text>
-            <Typography.Text
-              view="secondary-medium"
-              color="secondary"
-              className={styles.companyActivity}
-            >
-              {companyDetails}
-            </Typography.Text>
-          </span>
+          {companyPending ? (
+            <span className={styles.companyText} aria-hidden="true">
+              <Skeleton width="min(12rem, 100%)" height="0.875rem" />
+              <Skeleton width="min(9rem, 100%)" height="0.75rem" />
+            </span>
+          ) : (
+            <span className={styles.companyText}>
+              <Typography.Text view="primary-small" weight="bold">
+                {companyName}
+              </Typography.Text>
+              <Typography.Text
+                view="secondary-medium"
+                color="secondary"
+                className={styles.companyActivity}
+              >
+                {companyDetails}
+              </Typography.Text>
+            </span>
+          )}
         </Button>
         <div className={styles.headerActions}>
           <NotificationCenter
@@ -155,9 +178,13 @@ export function HeaderNavigation() {
             <Typography.Text view="secondary-medium" color="secondary">
               Ваш бизнес
             </Typography.Text>
-            <Typography.Text view="primary-small" weight="medium">
-              {companyName}
-            </Typography.Text>
+            {companyPending ? (
+              <Skeleton width="min(9rem, 100%)" height="0.875rem" />
+            ) : (
+              <Typography.Text view="primary-small" weight="medium">
+                {companyName}
+              </Typography.Text>
+            )}
           </div>
           <Button
             view="transparent"
@@ -192,12 +219,21 @@ export function HeaderNavigation() {
         onClose={closePanel}
       >
         <div className={styles.panelContent}>
-          <Typography.TitleResponsive tag="h2" view="small" font="system">
-            {companyName}
-          </Typography.TitleResponsive>
-          <Typography.Text tag="p" color="secondary">
-            {companyDetails}
-          </Typography.Text>
+          {companyPending ? (
+            <>
+              <Skeleton width="min(12rem, 80%)" height="1.5rem" />
+              <Skeleton width="min(10rem, 60%)" height="1rem" />
+            </>
+          ) : (
+            <>
+              <Typography.TitleResponsive tag="h2" view="small" font="system">
+                {companyName}
+              </Typography.TitleResponsive>
+              <Typography.Text tag="p" color="secondary">
+                {companyDetails}
+              </Typography.Text>
+            </>
+          )}
           {company && (
             <div className={styles.panelNotice}>
               <Typography.Text tag="p" weight="medium">

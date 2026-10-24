@@ -158,6 +158,35 @@
   padding: var(--gap-32);
 }
 
+.skeletonBody {
+  display: grid;
+  gap: var(--gap-32);
+  padding: var(--gap-32);
+}
+
+.skeletonSteps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap-16);
+}
+
+.skeletonStep {
+  display: grid;
+  justify-items: start;
+  gap: var(--gap-8);
+}
+
+.skeletonParameters {
+  display: grid;
+  gap: var(--gap-16);
+}
+
+.skeletonParameter {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-16);
+}
+
 .steps {
   justify-content: space-between;
 }
@@ -280,6 +309,10 @@
 }
 
 @container (max-width: 47.99rem) {
+  .skeletonSteps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .offerMain {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--gap-24);
@@ -310,7 +343,8 @@
   }
 
   .progress,
-  .bottomline {
+  .bottomline,
+  .skeletonBody {
     padding: var(--gap-24) var(--gap-20);
   }
 
