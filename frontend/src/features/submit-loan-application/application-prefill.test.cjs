@@ -66,6 +66,14 @@ const { ApplicationPreparation, ApplicationPreparationVisual } = load(`${feature
   '@alfalab/core-components/typography': { Typography },
   './ApplicationPreparation.module.scss': cssModule,
 })
+const { ExternalDataFields } = load(`${feature}/ui/ExternalDataFields/ExternalDataFields.tsx`, {
+  react: React,
+  '@alfalab/core-components/input': { Input },
+  '@alfalab/core-components/select': { Select },
+  '@/entities/application-form': formEntity,
+  '@/shared/ui': { FieldLabel: () => null },
+  './ExternalDataFields.module.scss': cssModule,
+})
 
 class ApiError extends Error {
   constructor(status, code, message = code) {
@@ -253,7 +261,10 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
   }
   const draft = { data: initialDraft, isPending: false, error: null }
   const dashboard = {
-    data: { company: { legalForm: 'IP', inn: '123456789012', name: 'ИП Тестовый Предприниматель', okved: '47.11' } },
+    data: { company: {
+      legalForm: 'IP', inn: '123456789012', name: 'ИП Тестовый Предприниматель', okved: '47.11',
+      externalDemo: { bkiScore: 680, delinquencies12m: 1, inquiries12m: 4, revenueTrend: 'DECLINING', companyAgeYears: 9 },
+    } },
     isPending: false, error: null,
   }
   const localDraft = load(`${feature}/model/local-draft.ts`, {
@@ -288,6 +299,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     '@/features/edit-profile': { ProfileCompany: () => null },
     '../IpApplicationFields': { IpApplicationFields }, '../ApplicationPreparation': { ApplicationPreparation, ApplicationPreparationVisual },
     '../OooApplicationFields': { OooApplicationFields },
+    '../ExternalDataFields': { ExternalDataFields },
     '../../model/local-draft': { ...localDraft, useLocalDraft: localDraft.loadLocalDraft },
     '../../model/use-application-prefill': prefill,
     './ApplicationForm.module.scss': cssModule,
@@ -314,6 +326,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     get modal() { return this.find((item) => item.type === Modal && item.props.className === 'modal') },
     get form() { return this.find((item) => item.type === 'form') },
     get ip() { return this.find((item) => item.type === IpApplicationFields) },
+    get external() { return this.find((item) => item.type === ExternalDataFields) },
     get buttons() { return React.Children.toArray(this.find((item) => item.props.className === 'actions').props.children) },
     field(name) { return this.find((item) => item.props.name === name) },
     change(name, value) {
@@ -328,6 +341,14 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     next() { this.form.props.onSubmit({ preventDefault() {} }) },
     editIp(patch, section = 'business') {
       this.find((item) => item.type === IpApplicationFields && item.props.section === section).props.onChange(patch)
+      this.render()
+    },
+    editExternal(patch) {
+      this.external.props.onChange(patch)
+      this.render()
+    },
+    blurExternal(field) {
+      this.external.props.onBlur(field)
       this.render()
     },
     async resolveDraft(registrationDate) {
@@ -748,7 +769,12 @@ test('preparation is a decorative, token-styled composition with reserved space 
   assert.ok(html.includes('<h2>Готовим вашу заявку</h2>'))
   for (const label of ['Сумма', 'Срок', 'Цель']) assert.ok(html.includes(label))
   assert.ok(!html.includes('style='))
-  assert.doesNotMatch(html.replace(/<[^>]+>/g, ''), /\d|%|ИИ|БКИ|одобр/i)
+  const text = html.replace(/<[^>]+>/g, '')
+  assert.ok(text.includes('Обработка в среднем занимает 10 секунд.'))
+  assert.doesNotMatch(
+    text.replace('Обработка в среднем занимает 10 секунд.', ''),
+    /\d|%|ИИ|БКИ|одобр/i,
+  )
   const preparationCss = readFileSync(path.join(root, `${feature}/ui/ApplicationPreparation/ApplicationPreparation.module.scss`), 'utf8')
   const formCss = readFileSync(path.join(root, `${feature}/ui/ApplicationForm/ApplicationForm.module.scss`), 'utf8')
   assert.match(preparationCss, /prefers-reduced-motion: reduce[\s\S]*animation: none/)
@@ -798,11 +824,147 @@ test('IP automatic annotations use the same wording without changing wire paths'
   assert.ok(!html.includes('Заполнено ИИ, проверьте'))
 })
 
-function readyLocalDraft(ipEdits = {}, currentStep = 3) {
+test('external data hints expose the current demo values', () => {
+  const hints = []
+  const { ExternalDataFields: Fields } = load(`${feature}/ui/ExternalDataFields/ExternalDataFields.tsx`, {
+    react: React,
+    '@alfalab/core-components/input': { Input },
+    '@alfalab/core-components/select': { Select },
+    '@/entities/application-form': formEntity,
+    '@/shared/ui': {
+      FieldLabel: (label) => {
+        hints.push(label)
+        return React.createElement('span', null, label.text)
+      },
+    },
+    './ExternalDataFields.module.scss': cssModule,
+  })
+  const hintOf = (text) => hints.find((hint) => hint.text === text)?.hint
+  const demo = {
+    bkiScore: 680,
+    delinquencies12m: 1,
+    inquiries12m: 4,
+    revenueTrend: 'DECLINING',
+    companyAgeYears: 9,
+  }
+  renderToStaticMarkup(
+    React.createElement(Fields, { value: {}, onChange() {}, demo }),
+  )
+  assert.match(hintOf('БКИ-скор'), /Сейчас: 680\./)
+  assert.match(hintOf('Просрочки за 12 месяцев'), /Сейчас: 1\./)
+  assert.match(hintOf('Запросы в БКИ за 12 месяцев'), /Сейчас: 4\./)
+  assert.match(hintOf('Возраст бизнеса для скоринга, лет'), /Сейчас: 9\./)
+  assert.match(hintOf('Динамика выручки'), /Сейчас: снижается\./)
+
+  hints.length = 0
+  renderToStaticMarkup(React.createElement(Fields, { value: {}, onChange() {} }))
+  assert.ok(hints.every((hint) => !String(hint.hint).includes('Сейчас:')))
+})
+
+test('phone validation accepts only Russian +7 numbers for IP and OOO', () => {
+  const schemas = [
+    formEntity.applicationApplicantSubmissionSchema.shape.phone,
+    formEntity.oooApplicantSubmissionSchema.shape.phone,
+  ]
+  for (const schema of schemas) {
+    for (const phone of ['+79990000000', '+7 (999) 111-00-01', '+7 999 111 00 01']) {
+      assert.equal(schema.safeParse(phone).success, true, phone)
+    }
+    for (const phone of ['89990000000', '+7999000000', '+1 999 111 0001', 'телефон']) {
+      const result = schema.safeParse(phone)
+      assert.equal(result.success, false, phone)
+      assert.match(result.error.issues[0].message, /\+7/)
+    }
+  }
+})
+
+test('bank form summary keeps manual external overrides for transparent scoring', () => {
+  const externalData = {
+    bkiScore: 810,
+    delinquencies12m: 0,
+    inquiries12m: 2,
+    revenueTrend: 'GROWING',
+    companyAgeYears: 12,
+  }
+  const parsed = formEntity.applicationBusinessSummarySchema.parse({
+    step2_businessData: { externalData },
+  })
+  assert.deepEqual(plain(parsed.step2_businessData.externalData), externalData)
+})
+
+test('external field validation runs on blur and blocks advancing the step', async (t) => {
+  const h = editor(t, { localDraft: readyLocalDraft({}, 1) })
+  h.resume()
+  for (const [field, value, message] of [
+    ['bkiScore', '1001', 'Укажите целое число от 0 до 1 000'],
+    ['delinquencies12m', '25', 'Укажите целое число от 0 до 24'],
+    ['inquiries12m', '31', 'Укажите целое число от 0 до 30'],
+    ['companyAgeYears', '101', 'Укажите целое число от 0 до 100'],
+  ]) {
+    h.editExternal({ [field]: value })
+    h.blurExternal(field)
+    assert.equal(h.external.props.errors[field], message, field)
+  }
+  h.next()
+  await settle()
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.external.props.errors.bkiScore, 'Укажите целое число от 0 до 1 000')
+
+  for (const field of ['bkiScore', 'delinquencies12m', 'inquiries12m', 'companyAgeYears']) {
+    h.editExternal({ [field]: '1' })
+    h.blurExternal(field)
+    assert.equal(h.external.props.errors[field], undefined, field)
+  }
+})
+
+test('external scoring overrides are persisted in the draft and submitted', async (t) => {
+  const overrides = {
+    bkiScore: '810',
+    delinquencies12m: '0',
+    inquiries12m: '2',
+    revenueTrend: 'GROWING',
+    companyAgeYears: '12',
+  }
+  const expected = {
+    bkiScore: 810,
+    delinquencies12m: 0,
+    inquiries12m: 2,
+    revenueTrend: 'GROWING',
+    companyAgeYears: 12,
+  }
+  const h = editor(t, { localDraft: readyLocalDraft({}, 1) })
+  h.resume()
+  assert.deepEqual(plain(h.external.props.demo), {
+    bkiScore: 680,
+    delinquencies12m: 1,
+    inquiries12m: 4,
+    revenueTrend: 'DECLINING',
+    companyAgeYears: 9,
+  })
+  h.editExternal(overrides)
+  h.next()
+  assert.deepEqual(
+    (await h.resolveDraft()).form.step2_businessData.externalData,
+    expected,
+  )
+  h.next()
+  const reviewed = await h.resolveDraft()
+  assert.equal(reviewed.currentStep, 3)
+  assert.deepEqual(reviewed.form.step2_businessData.externalData, expected)
+  h.next()
+  await settle()
+  assert.equal(h.requests.at(-1).url, '/api/applications')
+  assert.deepEqual(
+    JSON.parse(h.requests.at(-1).options.body).step2_businessData.externalData,
+    expected,
+  )
+})
+
+function readyLocalDraft(ipEdits = {}, currentStep = 3, externalEdits = {}) {
   return {
     description, amount: '200000', termDays: '60', purpose: 'Закупка товара',
     currentStep, started: true, revision: null, serverForm: null,
-    acceptedAt: '2026-10-01T12:00:00Z',
+    acceptedAt: '2026-10-01T12:00:00Z', externalEdits,
     ipEdits: {
       companyName: 'ИП Тестовый Предприниматель', inn: '123456789012', legalForm: 'ИП',
       taxSystem: 'USN', monthlyRevenue: '500000', existingDebt: '0',
