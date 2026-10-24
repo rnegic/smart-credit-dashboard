@@ -82,6 +82,14 @@
   color: var(--color-light-text-secondary);
 }
 
+.manualOverride {
+  display: block;
+  margin-block-start: var(--gap-4);
+  color: var(--color-light-text-secondary);
+  font-size: var(--gap-12);
+  font-weight: 400;
+}
+
 .parameters {
   display: grid;
   gap: var(--gap-12);

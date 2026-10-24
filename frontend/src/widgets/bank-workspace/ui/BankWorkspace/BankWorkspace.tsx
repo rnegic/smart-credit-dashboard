@@ -71,6 +71,15 @@ function errorMessage(error: unknown): string {
   return 'Не удалось выполнить запрос. Повторите попытку.'
 }
 
+function ManualOverrideMark({ active }: { active: boolean }) {
+  if (!active) return null
+  return (
+    <span className={styles.manualOverride}>
+      Указано вручную; использовано в скоринге
+    </span>
+  )
+}
+
 const skeletonFacts = [0, 1, 2, 3] as const
 const skeletonRows = [0, 1, 2, 3, 4, 5, 6, 7] as const
 
@@ -249,6 +258,24 @@ export function BankWorkspace() {
   const financials = businessData?.financials
   const monthlyRevenue = businessData?.financials?.monthlyRevenue
   const registrationDate = businessData?.applicant?.registrationDate
+  const externalOverride = businessData?.externalData
+  const hasManualOverrides =
+    externalOverride != null &&
+    [
+      externalOverride.bkiScore,
+      externalOverride.delinquencies12m,
+      externalOverride.inquiries12m,
+      externalOverride.revenueTrend,
+      externalOverride.companyAgeYears,
+    ].some((value) => value != null)
+  const manualAge =
+    externalOverride?.companyAgeYears == null
+      ? null
+      : new Intl.NumberFormat('ru-RU', {
+          style: 'unit',
+          unit: 'year',
+          unitDisplay: 'long',
+        }).format(externalOverride.companyAgeYears)
   const industryGroup = getIndustryGroup(businessData?.applicant?.mainOkved)
   const exactAge = application
     ? getCompanyAge(registrationDate, application.createdAt)
@@ -460,7 +487,15 @@ export function BankWorkspace() {
                       {applicationForm.isPending ? (
                         <Skeleton width="10rem" height="1.25rem" />
                       ) : (
-                        companyAge
+                        <>
+                          {companyAge}
+                          {manualAge && (
+                            <span className={styles.manualOverride}>
+                              Для скоринга вручную указано: {manualAge}. Это
+                              значение использовано в расчёте.
+                            </span>
+                          )}
+                        </>
                       )}
                     </dd>
                   </div>
@@ -779,6 +814,12 @@ export function BankWorkspace() {
                     <p className={styles.secondary}>
                       Эти сведения не отображаются в кабинете клиента
                     </p>
+                    {hasManualOverrides && (
+                      <p className={styles.secondary}>
+                        Значения с пометкой «вручную» были заданы клиентом в
+                        демо-форме и именно они использованы при скоринге.
+                      </p>
+                    )}
                     <dl className={styles.parameters}>
                       {scoring.bkiZone && (
                         <div>
@@ -790,15 +831,32 @@ export function BankWorkspace() {
                         <>
                           <div>
                             <dt>Оценка БКИ</dt>
-                            <dd>{scoring.external.bkiScore}</dd>
+                            <dd>
+                              {scoring.external.bkiScore}
+                              <ManualOverrideMark
+                                active={externalOverride?.bkiScore != null}
+                              />
+                            </dd>
                           </div>
                           <div>
                             <dt>Просрочки за 12 месяцев</dt>
-                            <dd>{scoring.external.delinquencies12m}</dd>
+                            <dd>
+                              {scoring.external.delinquencies12m}
+                              <ManualOverrideMark
+                                active={
+                                  externalOverride?.delinquencies12m != null
+                                }
+                              />
+                            </dd>
                           </div>
                           <div>
                             <dt>Запросы в БКИ за 12 месяцев</dt>
-                            <dd>{scoring.external.inquiries12m}</dd>
+                            <dd>
+                              {scoring.external.inquiries12m}
+                              <ManualOverrideMark
+                                active={externalOverride?.inquiries12m != null}
+                              />
+                            </dd>
                           </div>
                           <div>
                             <dt>Активные кредиты по данным БКИ</dt>
@@ -812,11 +870,21 @@ export function BankWorkspace() {
                                   scoring.external.revenueTrend
                                 ]
                               }
+                              <ManualOverrideMark
+                                active={externalOverride?.revenueTrend != null}
+                              />
                             </dd>
                           </div>
                           <div>
                             <dt>Полных лет бизнеса в расчёте скоринга</dt>
-                            <dd>{scoring.external.companyAgeYears}</dd>
+                            <dd>
+                              {scoring.external.companyAgeYears}
+                              <ManualOverrideMark
+                                active={
+                                  externalOverride?.companyAgeYears != null
+                                }
+                              />
+                            </dd>
                           </div>
                         </>
                       )}
