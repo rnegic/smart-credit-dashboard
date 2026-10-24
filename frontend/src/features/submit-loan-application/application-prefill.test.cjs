@@ -284,7 +284,8 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     '@/entities/session': { ...sessionEntity, useSession: () => ({ data: cache.getQueryData(sessionEntity.sessionKey) }) }, '@/shared/api': api,
     '@/shared/config': { ROUTES: { applications: '/applications' } },
     '@/shared/lib': { formatMoney: (value) => String(value) },
-    '@/shared/ui': { FieldLabel: () => null, RequestState: () => null },
+    '@/shared/ui': { FieldLabel: () => null, RequestState: () => null, Panel: () => null },
+    '@/features/edit-profile': { ProfileCompany: () => null },
     '../IpApplicationFields': { IpApplicationFields }, '../ApplicationPreparation': { ApplicationPreparation, ApplicationPreparationVisual },
     '../OooApplicationFields': { OooApplicationFields },
     '../../model/local-draft': { ...localDraft, useLocalDraft: localDraft.loadLocalDraft },
@@ -894,6 +895,9 @@ test('a prefill without registry date can reach review and submit without editin
   assert.equal(reviewed.currentStep, 3)
   assert.equal(reviewed.form.step2_businessData.applicant.registrationDate, null)
   h.next()
+  h.render()
+  assert.ok(h.html().includes('Отправляем заявку'))
+  assert.equal(h.form, undefined)
   await settle()
   assert.equal(h.requests.at(-1).url, '/api/applications')
   assert.equal(h.requests.at(-1).options.method, 'POST')

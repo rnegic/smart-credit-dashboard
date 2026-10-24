@@ -236,7 +236,7 @@ test('mount loads the scoped profile with loading, backend errors, retry and opt
   assert.ok(h.html().includes('Повторить'))
   h.requestState.props.retry()
   await h.resolveProfile()
-  assert.ok(h.html().includes(profile.fullName))
+  assert.ok(h.html().includes('Контактные данные'))
   assert.equal(h.field('phone').props.type, 'tel')
   assert.equal(h.field('email').props.type, 'email')
   for (const field of ['phone', 'email']) {
