@@ -2,6 +2,7 @@ package alfa.smartcredit.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import alfa.smartcredit.model.enums.RevenueTrend;
 import alfa.smartcredit.service.ProductRules;
 import alfa.smartcredit.validation.ValidTermDays;
 import jakarta.validation.Valid;
@@ -32,14 +33,26 @@ public record ApplicationFormDto(
             @NotBlank @Size(max = 100) String purpose) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Step2(@NotNull @Valid Applicant applicant, @NotNull @Valid Financials financials) {}
+    public record Step2(@NotNull @Valid Applicant applicant, @NotNull @Valid Financials financials,
+                        @Valid ExternalDataOverride externalData) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ExternalDataOverride(
+            @Min(0) @Max(1000) Integer bkiScore,
+            @Min(0) @Max(24) Integer delinquencies12m,
+            @Min(0) @Max(30) Integer inquiries12m,
+            RevenueTrend revenueTrend,
+            @Min(0) @Max(100) Integer companyAgeYears) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Applicant(
             String type, String companyName, String inn, String taxSystem,
             String firstName, String lastName, String middleName,
             String ogrnip, String ogrn, String kpp, // Добавлены поля для ООО
-            LocalDate registrationDate, String mainOkved, String industry, String phone, String email,
+            LocalDate registrationDate, String mainOkved, String industry,
+            @Pattern(regexp = "^\\+7[\\s()\\-]*(?:\\d[\\s()\\-]*){10}$",
+                    message = "Укажите российский номер в формате +7XXXXXXXXXX") String phone,
+            String email,
             String registrationAddress) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
