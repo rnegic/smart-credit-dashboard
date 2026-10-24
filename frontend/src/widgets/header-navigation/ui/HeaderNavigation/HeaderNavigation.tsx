@@ -14,7 +14,7 @@ import { WalletMIcon } from '@alfalab/icons/glyph/dist/WalletMIcon'
 import { useDashboard } from '@/entities/dashboard'
 import { useApplications } from '@/entities/loan-application'
 import { SessionActions } from '@/features/demo-session'
-import { ProfileContacts } from '@/features/edit-profile'
+import { ProfileCompany, ProfileContacts } from '@/features/edit-profile'
 import { NotificationCenter } from '@/features/read-notifications'
 import { ROUTES } from '@/shared/config'
 import { AlfaMark, Panel } from '@/shared/ui'
@@ -212,6 +212,7 @@ export function HeaderNavigation() {
               </Typography.Text>
             </div>
           )}
+          <ProfileCompany />
           <ProfileContacts />
           <SessionActions />
         </div>
