@@ -1,4 +1,9 @@
-import { Fragment, useId, type ComponentProps } from 'react'
+import {
+  Fragment,
+  useId,
+  type ComponentProps,
+  type MouseEvent,
+} from 'react'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Checkbox } from '@alfalab/core-components/checkbox'
@@ -35,6 +40,7 @@ export interface IpApplicationFieldsProps {
   profileMatches?: boolean
   confirmed?: boolean
   onConfirm?: () => void
+  onEditProfile?: (trigger: HTMLButtonElement) => void
   aiFilled?: ReadonlySet<string>
   missingFields?: ReadonlySet<string>
   errors?: Readonly<Record<string, string>>
@@ -60,6 +66,7 @@ type TextField = {
   placeholder?: string
   type?: ComponentProps<typeof Input>['type']
   inputMode?: 'numeric' | 'decimal'
+  readOnly?: boolean
   wide?: boolean
 }
 
@@ -67,15 +74,17 @@ const businessFields: TextField[] = [
   {
     name: 'companyName',
     label: 'Название',
-    hint: 'Полное название ИП',
+    hint: 'Название из профиля компании в банке',
+    readOnly: true,
   },
   {
     name: 'inn',
     label: 'ИНН',
-    hint: '12 цифр, из свидетельства ИП',
+    hint: '12 цифр из профиля компании в банке',
     inputMode: 'numeric',
+    readOnly: true,
   },
-  { name: 'legalForm', label: 'Форма бизнеса' },
+  { name: 'legalForm', label: 'Форма бизнеса', readOnly: true },
   {
     name: 'monthlyRevenue',
     label: 'Среднемесячная выручка, ₽',
@@ -94,7 +103,8 @@ const registrationFields: TextField[] = [
   {
     name: 'fullName',
     label: 'ФИО',
-    hint: 'Фамилия, имя и отчество предпринимателя. Проверьте данные профиля.',
+    hint: 'Фамилия, имя и отчество предпринимателя из профиля компании',
+    readOnly: true,
     wide: true,
   },
   {
@@ -108,7 +118,8 @@ const registrationFields: TextField[] = [
   {
     name: 'okved',
     label: 'Основной ОКВЭД',
-    hint: 'Точный код из ЕГРИП. Группа отраслей определяется по первым двум цифрам.',
+    hint: 'Код из профиля компании в банке. Группа отраслей определяется по первым двум цифрам.',
+    readOnly: true,
     placeholder: 'Например, 47.11',
   },
   {
@@ -160,6 +171,7 @@ export function IpApplicationFields({
   profileMatches,
   confirmed,
   onConfirm,
+  onEditProfile,
   aiFilled = new Set(),
   missingFields = new Set(),
   errors = {},
@@ -211,8 +223,17 @@ export function IpApplicationFields({
                   Это я
                 </Button>
               )}
-              <Button type="button" view="text" size={32} onClick={editPrefill}>
-                Исправить данные
+              <Button
+                type="button"
+                view="text"
+                size={32}
+                onClick={(event: MouseEvent<HTMLButtonElement>) =>
+                  onEditProfile
+                    ? onEditProfile(event.currentTarget)
+                    : editPrefill()
+                }
+              >
+                Изменить в профиле
               </Button>
             </div>
           )}
@@ -252,6 +273,7 @@ export function IpApplicationFields({
                         : undefined
                 }
                 inputMode={field.inputMode}
+                readOnly={field.readOnly}
                 required
                 maxLength={
                   field.name === 'inn'

@@ -1,4 +1,8 @@
-import { useId, type ComponentProps } from 'react'
+import {
+  useId,
+  type ComponentProps,
+  type MouseEvent,
+} from 'react'
 import { Input } from '@alfalab/core-components/input'
 import { Select } from '@alfalab/core-components/select'
 import { Checkbox } from '@alfalab/core-components/checkbox'
@@ -28,6 +32,7 @@ export interface OooApplicationFieldsProps {
   confirmed?: boolean
   onConfirm?: () => void
   onEdit?: () => void
+  onEditProfile?: (trigger: HTMLButtonElement) => void
   aiFilled?: ReadonlySet<string>
   missingFields?: ReadonlySet<string>
   errors?: Readonly<Record<string, string>>
@@ -161,6 +166,7 @@ export function OooApplicationFields({
   confirmed,
   onConfirm,
   onEdit,
+  onEditProfile,
   aiFilled = new Set(),
   missingFields = new Set(),
   errors = {},
@@ -292,20 +298,6 @@ export function OooApplicationFields({
             Проверьте сведения ЕГРЮЛ и контакты. Если ОГРН, КПП или адрес не
             заполнены, укажите их по документам организации.
           </p>
-          <div className={styles.grid}>{registrationFields.map(renderField)}</div>
-          <dl className={styles.details}>
-            <div>
-              <dt>Группа отраслей (ОКВЭД)</dt>
-              <dd>{industry?.label ?? 'Не определена'}</dd>
-            </div>
-            {value.registrationDate && (
-              <div>
-                <dt>Дата регистрации по данным банка</dt>
-                <dd>{formatDate(value.registrationDate)}</dd>
-              </div>
-            )}
-          </dl>
-          {errors.industry && <p role="alert">{errors.industry}</p>}
           <div className={styles.notice}>
             <strong className={confirmed ? styles.confirmed : undefined}>
               {confirmed && (
@@ -329,6 +321,18 @@ export function OooApplicationFields({
                   Это наша компания
                 </Button>
               )}
+              {onEditProfile && (
+                <Button
+                  type="button"
+                  view="text"
+                  size={32}
+                  onClick={(event: MouseEvent<HTMLButtonElement>) =>
+                    onEditProfile(event.currentTarget)
+                  }
+                >
+                  Изменить название, ИНН и ОКВЭД
+                </Button>
+              )}
               <Button
                 type="button"
                 view="text"
@@ -344,6 +348,20 @@ export function OooApplicationFields({
             </div>
             {errors.confirmed && <p role="alert">{errors.confirmed}</p>}
           </div>
+          <div className={styles.grid}>{registrationFields.map(renderField)}</div>
+          <dl className={styles.details}>
+            <div>
+              <dt>Группа отраслей (ОКВЭД)</dt>
+              <dd>{industry?.label ?? 'Не определена'}</dd>
+            </div>
+            {value.registrationDate && (
+              <div>
+                <dt>Дата регистрации по данным банка</dt>
+                <dd>{formatDate(value.registrationDate)}</dd>
+              </div>
+            )}
+          </dl>
+          {errors.industry && <p role="alert">{errors.industry}</p>}
         </>
       )}
     </div>
