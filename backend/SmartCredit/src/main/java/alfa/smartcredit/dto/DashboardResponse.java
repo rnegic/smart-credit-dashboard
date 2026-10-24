@@ -1,5 +1,7 @@
 package alfa.smartcredit.dto;
 
+import alfa.smartcredit.model.enums.RevenueTrend;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -15,7 +17,11 @@ public record DashboardResponse(
         PaymentDto nextPayment,              // null, если нет
         long unreadNotifications
 ) {
-    public record CompanyDto(Long id, String name, String inn, String okved, String legalForm) {}
+    public record CompanyDto(Long id, String name, String inn, String okved, String legalForm,
+                             ExternalDemoDto externalDemo) {}
+
+    public record ExternalDemoDto(Integer bkiScore, Integer delinquencies12m, Integer inquiries12m,
+                                  RevenueTrend revenueTrend, Integer companyAgeYears) {}
 
     public record ApplicationDto(Long id, BigDecimal amount, Integer termDays, BigDecimal rate,
                                  String purpose, String status, String decision, BigDecimal finalRate,
