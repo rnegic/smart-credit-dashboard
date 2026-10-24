@@ -49,15 +49,9 @@ function ApplicationOverviewSkeleton() {
         <Skeleton width="3.5rem" height="1rem" />
       </div>
       <div className={styles.heading}>
-        <Typography.TitleResponsive
-          id={headingId}
-          tag="h2"
-          view="large"
-          font="system"
-          weight="bold"
-        >
+        <span id={headingId} className={styles.screenReaderOnly}>
           Обзор кредита и заявки
-        </Typography.TitleResponsive>
+        </span>
         <Skeleton width="min(100%, 24rem)" height="2.25rem" />
         <Skeleton width="min(70%, 18rem)" height="1rem" />
       </div>

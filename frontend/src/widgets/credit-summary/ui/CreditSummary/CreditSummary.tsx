@@ -21,15 +21,10 @@ function CreditSummarySkeleton() {
       aria-labelledby={headingId}
       aria-busy="true"
     >
-      <Typography.TitleResponsive
-        tag="h2"
-        id={headingId}
-        view="xsmall"
-        font="system"
-        weight="bold"
-      >
+      <span id={headingId} className={styles.screenReaderOnly}>
         Кредиты и лимиты
-      </Typography.TitleResponsive>
+      </span>
+      <Skeleton width="10rem" height="1.5rem" />
       <div className={styles.body}>
         <Skeleton
           width="var(--gap-48)"
