@@ -43,9 +43,9 @@ public final class ProductRules {
 
         if (scale == BusinessScale.MICRO) {
             return switch (termDays) {
-                case 30 -> new BigDecimal("20.00");
-                case 60 -> new BigDecimal("22.00");
-                case 90 -> new BigDecimal("24.00");
+                case 30 -> new BigDecimal("24.50");
+                case 60 -> new BigDecimal("24.75");
+                case 90 -> new BigDecimal("25.00");
                 default -> null;
             };
         } else if (scale == BusinessScale.SMALL) {
