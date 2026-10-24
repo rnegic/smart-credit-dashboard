@@ -12,6 +12,7 @@ import { DocumentLinesLineSIcon } from '@alfalab/icons/glyph/dist/DocumentLinesL
 import { MagnifierMIcon } from '@alfalab/icons/glyph/dist/MagnifierMIcon'
 import {
   applicationDecisionLabels,
+  getApplicationPurposeLabel,
   type BankApplicationView,
 } from '@/entities/loan-application'
 import { formatMoney } from '@/shared/lib'
@@ -184,8 +185,8 @@ export function ApplicationQueue({
                     <span className={styles.cellLabel}>Сумма / срок</span>
                     <strong className={styles.money}>{formatMoney(application.amount)}</strong>
                     <span className={styles.secondary}>{application.termDays} дней</span>
-                    <span className={styles.purpose} title={application.purpose ?? undefined}>
-                      {application.purpose ?? 'Цель не указана'}
+                    <span className={styles.purpose} title={getApplicationPurposeLabel(application.purpose)}>
+                      {getApplicationPurposeLabel(application.purpose)}
                     </span>
                   </td>
                   <td className={styles.stage} role="cell">
