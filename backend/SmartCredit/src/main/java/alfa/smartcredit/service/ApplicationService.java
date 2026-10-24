@@ -2,6 +2,7 @@ package alfa.smartcredit.service;
 
 import alfa.smartcredit.dto.ApplicationFormDto;
 import alfa.smartcredit.dto.ApplicationView;
+import alfa.smartcredit.dto.CommentSuggestionRequest;
 import alfa.smartcredit.dto.DecisionRequest;
 import alfa.smartcredit.event.ApplicationStatusChangedEvent;
 import alfa.smartcredit.exception.ApiException;
@@ -312,5 +313,22 @@ public class ApplicationService {
     }
     private static String pct(BigDecimal v) {
         return v == null ? "—" : v.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
+    }
+    @Transactional(readOnly = true)
+    public String suggestComment(Long id, CommentSuggestionRequest req) {
+        CreditApplication a = find(id);
+        if (a.getStatus() != ApplicationStatus.IN_REVIEW)
+            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_DECIDED",
+                    "По заявке уже принято решение");
+
+        ScoringService.Result r = null;
+        if (a.getScoringData() != null) {
+            try {
+                r = mapper.treeToValue(a.getScoringData(), ScoringService.Result.class);
+            } catch (Exception e) {
+                // Если не удалось распарсить, работаем без данных скоринга
+            }
+        }
+        return aiCommentService.commentForOfficer(r, a.getAmount(), a.getTermDays(), req);
     }
 }

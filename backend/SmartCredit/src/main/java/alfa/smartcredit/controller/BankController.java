@@ -1,6 +1,8 @@
 package alfa.smartcredit.controller;
 
 import alfa.smartcredit.dto.ApplicationView;
+import alfa.smartcredit.dto.CommentSuggestionRequest;
+import alfa.smartcredit.dto.CommentSuggestionResponse;
 import alfa.smartcredit.dto.DecisionRequest;
 import alfa.smartcredit.service.ApplicationService;
 import alfa.smartcredit.service.SessionContext;
@@ -41,5 +43,12 @@ public class BankController {
     public JsonNode form(@PathVariable Long id, HttpServletRequest request) {
         sessionContext.requireOfficer(request);
         return applicationService.getFormForBank(id);
+    }
+    @PostMapping("/applications/{id}/comment-suggestion")
+    public CommentSuggestionResponse suggestComment(@PathVariable Long id,
+                                                    @Valid @RequestBody CommentSuggestionRequest body,
+                                                    HttpServletRequest request) {
+        sessionContext.requireOfficer(request);
+        return new CommentSuggestionResponse(applicationService.suggestComment(id, body));
     }
 }

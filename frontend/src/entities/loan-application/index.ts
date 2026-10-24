@@ -6,7 +6,10 @@ export {
   getApplicationProgress,
   type ApplicationProgressStage,
 } from './get-application-progress'
-
+export const commentSuggestionSchema = z.object({
+  comment: z.string().max(1000),
+})
+export type CommentSuggestion = z.infer<typeof commentSuggestionSchema>
 export const applicationStatusSchema = z.enum([
   'IN_REVIEW',
   'OFFER_READY',
