@@ -45,7 +45,8 @@ public class ApplicationFormService {
                                 null, // annualRevenue
                                 null, // averageEmployeeCount
                                 null  // otherMonthlyObligations
-                        )),
+                        ),
+                        null),
                 new ApplicationFormDto.Prefilled(ip ? "EGRIP_MOCK" : "EGRUL_MOCK", Instant.now(), false),
                 new ApplicationFormDto.Step3(new ApplicationFormDto.Consents(false, false, false, null)),
                 new ApplicationFormDto.Meta("1.3", List.of("form_started")));

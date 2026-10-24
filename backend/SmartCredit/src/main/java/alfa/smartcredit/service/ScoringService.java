@@ -72,7 +72,10 @@ public class ScoringService {
         final String legalForm = c.getLegalForm();
         final boolean ooo = ProductRules.isOoo(legalForm);
 
-        ExternalDataService.ExternalData ext = externalData.fetch(c);
+        var externalOverride = form == null || form.step2() == null
+                ? null
+                : form.step2().externalData();
+        ExternalDataService.ExternalData ext = externalData.fetch(c, externalOverride);
         IndustryDirectory.Industry industry = IndustryDirectory.byOkved(c.getOkved());
 
         if (!isDataComplete(form, ooo)) {
