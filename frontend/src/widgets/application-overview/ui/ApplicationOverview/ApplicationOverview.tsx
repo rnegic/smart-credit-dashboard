@@ -372,7 +372,6 @@ export function ApplicationOverview({
         'Предложение принято. Ознакомьтесь с документами и подпишите их, после этого банк оформит кредит.',
     },
   }[application.status]
-  }[application.status]
   const offerState =
     !providedApplication && applications.isError
       ? applications.error.message
@@ -389,12 +388,14 @@ export function ApplicationOverview({
                 ? 'Статус заявки обновляется. Подписание пока недоступно.'
                 : null
 
-  const offerExperience =
+    const offerExperience =
     awaitingClientChoice ||
     application.status === 'ACCEPTED' ||
+    application.status === 'SIGNATURE_PENDING' ||
     (detailsOpen &&
       (selectedApplication?.status === 'OFFER_READY' ||
-        selectedApplication?.status === 'ACCEPTED'))
+        selectedApplication?.status === 'ACCEPTED' ||
+        selectedApplication?.status === 'SIGNATURE_PENDING'))
   const applicationDetails = (
     <div className={styles.details}>
       <Typography.TitleResponsive tag="h2" view="medium" font="system">
