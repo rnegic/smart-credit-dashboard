@@ -9,6 +9,27 @@ export const companySchema = z.object({
 })
 export type Company = z.infer<typeof companySchema>
 
+/** Реквизиты, которые клиент может исправить в профиле компании. */
+export const companyUpdateSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Укажите название')
+    .max(255, 'Название не должно превышать 255 символов'),
+  inn: z
+    .string()
+    .trim()
+    .regex(/^\d{10}(\d{2})?$/, 'ИНН должен содержать 10 или 12 цифр'),
+  okved: z.union([
+    z.literal(''),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{2}(\.\d+)?$/, 'ОКВЭД должен начинаться с двух цифр'),
+  ]),
+})
+export type CompanyUpdate = z.infer<typeof companyUpdateSchema>
+
 export const industryGroups = [
   { key: 'IT', label: 'IT, связь (62, 63)', from: 62, to: 63 },
   { key: 'TRADE', label: 'Торговля (45–47)', from: 45, to: 47 },
