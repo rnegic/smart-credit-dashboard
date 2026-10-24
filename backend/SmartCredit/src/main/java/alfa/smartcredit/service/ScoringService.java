@@ -50,9 +50,12 @@ public class ScoringService {
         var s1 = f.step1();
         var fin = f.step2().financials();
 
+        // Для ООО годовая выручка должна быть строго > 0: иначе amount/annualRevenue
+        // не определено. Для ИП annualRevenue опционален (используем monthlyRevenue × 12).
         boolean oooComplete = "OOO".equals(f.step2().applicant().type())
-                ? (fin.annualRevenue() != null && fin.averageEmployeeCount() != null)
-                : true; // Для ИП не обязательно
+                ? (fin.annualRevenue() != null && fin.annualRevenue().signum() > 0
+                && fin.averageEmployeeCount() != null)
+                : true;
 
         return s1.amount() != null && s1.amount().compareTo(ProductRules.MIN_AMOUNT) >= 0
                 && s1.termDays() != null && ProductRules.TERM_DAYS.contains(s1.termDays())
@@ -92,8 +95,11 @@ public class ScoringService {
         double dti = totalDebt.add(newPayment).multiply(BigDecimal.valueOf(100))
                 .divide(revenue, 2, RoundingMode.HALF_UP).doubleValue();
 
-        // 4. Amount to Revenue: Сумма / Годовая выручка
-        BigDecimal annualRev = fin.annualRevenue() != null ? fin.annualRevenue() : revenue.multiply(BigDecimal.valueOf(12));
+        // 4. Amount to Revenue: Сумма / Годовая выручка.
+        // Защита от деления на 0: если годовая выручка не задана или 0, берём monthlyRevenue × 12.
+        BigDecimal annualRev = fin.annualRevenue() != null && fin.annualRevenue().signum() > 0
+                ? fin.annualRevenue()
+                : revenue.multiply(BigDecimal.valueOf(12));
         double amountToRevenue = amount.divide(annualRev, 4, RoundingMode.HALF_UP).doubleValue();
 
         Map<String, Integer> pts = new LinkedHashMap<>();
