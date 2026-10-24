@@ -1,0 +1,112 @@
+.workspace {
+  display: grid;
+  gap: var(--gap-24);
+  min-inline-size: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-20);
+}
+
+.heading,
+.refresh,
+.freshness {
+  display: grid;
+  gap: var(--gap-12);
+  min-inline-size: 0;
+}
+
+.refresh {
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--gap-20);
+}
+
+.freshness {
+  gap: var(--gap-4);
+  justify-items: end;
+}
+
+.queue {
+  min-inline-size: 0;
+  border: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+  border-radius: var(--border-radius-16);
+  background: var(--color-light-base-bg-primary);
+  overflow: hidden;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-4);
+  padding: var(--gap-8) var(--gap-16) var(--gap-0);
+  border-block-end: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  align-items: center;
+  gap: var(--gap-24);
+  padding: var(--gap-20) var(--gap-24) var(--gap-8);
+}
+
+.resultBar {
+  padding: var(--gap-4) var(--gap-24) var(--gap-12);
+}
+
+.table {
+  border-block-start: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+}
+
+.tableHead,
+.tableRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16% 21% 17% 12% 5rem;
+  align-items: start;
+  gap: var(--gap-16);
+  padding: var(--gap-12) var(--gap-24);
+}
+
+.tableHead {
+  border-block-end: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+  background: var(--color-light-neutral-translucent-100);
+}
+
+.tableRow {
+  padding-block: var(--gap-20);
+}
+
+.tableRow + .tableRow {
+  border-block-start: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+}
+
+.cell {
+  display: grid;
+  align-content: start;
+  gap: var(--gap-8);
+  min-inline-size: 0;
+}
+
+@media (max-width: 43.99rem) {
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-12);
+  }
+
+  .tableHead,
+  .tableRow {
+    grid-template-columns: minmax(0, 1fr) 30% 24% 3rem;
+  }
+
+  .tableHead > :nth-child(4),
+  .tableHead > :nth-child(5),
+  .tableRow > :nth-child(4),
+  .tableRow > :nth-child(5) {
+    display: none;
+  }
+}

@@ -1,0 +1,55 @@
+.shell {
+  min-block-size: 100svh;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-16);
+  padding: var(--gap-12) var(--gap-32);
+  border-block-end: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
+  background: var(--color-light-base-bg-primary);
+}
+
+.brand,
+.profile {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-16);
+  min-inline-size: 0;
+}
+
+.brand > svg {
+  inline-size: var(--gap-32);
+  flex-shrink: 0;
+}
+
+.identity {
+  display: grid;
+  gap: var(--gap-2);
+  justify-items: end;
+  min-inline-size: 0;
+}
+
+.page {
+  inline-size: 100%;
+  max-inline-size: 90rem;
+  min-inline-size: 0;
+  margin-inline: auto;
+  padding: var(--gap-32);
+}
+
+@media (max-width: 43.99rem) {
+  .header {
+    padding: var(--gap-12) var(--gap-16);
+  }
+
+  .brand > :last-child {
+    display: none;
+  }
+
+  .page {
+    padding: var(--gap-16);
+  }
+}

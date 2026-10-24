@@ -26,12 +26,13 @@ import {
   syncSessionChanges,
 } from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
-import { Panel } from '@/shared/ui'
+import { Panel, Skeleton } from '@/shared/ui'
 import { ApplicationQueue } from '../ApplicationQueue'
 import { ApplicationStatus } from '../ApplicationStatus'
 import { DecisionStatus } from '../DecisionStatus'
 import { DecisionForm } from '../DecisionForm'
 import type { Decision } from '../../model/decision'
+import { BankWorkspaceSkeleton } from './BankWorkspaceSkeleton'
 import styles from './BankWorkspace.module.scss'
 
 type UserId = Session['userId']
@@ -68,6 +69,45 @@ function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return `${error.message} (${error.code})`
   if (error instanceof Error) return error.message
   return 'Не удалось выполнить запрос. Повторите попытку.'
+}
+
+const skeletonFacts = [0, 1, 2, 3] as const
+const skeletonRows = [0, 1, 2, 3, 4, 5, 6, 7] as const
+
+function BankDetailSkeleton() {
+  return (
+    <div className={styles.detailSkeleton} aria-busy="true">
+      <div className={styles.detailSkeletonHeading}>
+        <Skeleton width="min(24rem, 70%)" height="2rem" />
+        <Skeleton
+          width="6rem"
+          height="1.5rem"
+          radius="var(--border-radius-8)"
+        />
+      </div>
+      <div className={styles.detailSkeletonFacts}>
+        {skeletonFacts.map((fact) => (
+          <div className={styles.detailSkeletonFact} key={fact}>
+            <Skeleton width="70%" height="0.75rem" />
+            <Skeleton width="50%" height="1.5rem" />
+          </div>
+        ))}
+      </div>
+      <div className={styles.detailSkeletonRows}>
+        {skeletonRows.map((row) => (
+          <div className={styles.detailSkeletonRow} key={row}>
+            <Skeleton width="70%" height="0.75rem" />
+            <Skeleton width="50%" height="0.875rem" />
+          </div>
+        ))}
+      </div>
+      <div className={styles.detailSkeletonSection}>
+        <Skeleton width="12rem" height="1.25rem" />
+        <Skeleton width="90%" height="0.875rem" />
+        <Skeleton width="75%" height="0.875rem" />
+      </div>
+    </div>
+  )
 }
 
 /** Bank queue and officer decisions, backed exclusively by validated API data. */
@@ -272,7 +312,7 @@ export function BankWorkspace() {
     )
   }
   if (session.isPending) {
-    return <p role="status">Загружаем сессию сотрудника...</p>
+    return <BankWorkspaceSkeleton />
   }
   if (!session.data || session.data.role !== 'BANK_OFFICER') {
     return (
@@ -284,6 +324,8 @@ export function BankWorkspace() {
 
   const officerId = session.data.userId
   const queue = applications.data
+
+  if (applications.isPending) return <BankWorkspaceSkeleton />
 
   return (
     <section className={styles.workspace} aria-labelledby={headingId}>
@@ -304,7 +346,7 @@ export function BankWorkspace() {
                   ? 'Не удалось обновить'
                   : applications.dataUpdatedAt > 0
                     ? `Обновлено в ${updateTimeFormatter.format(applications.dataUpdatedAt)}`
-                    : 'Загружаем очередь'}
+                    : 'Данные очереди'}
             </span>
             <span className={styles.secondary}>Автообновление каждые 15 сек.</span>
           </div>
@@ -325,9 +367,6 @@ export function BankWorkspace() {
         </div>
       </header>
 
-      {applications.isPending && (
-        <p className={styles.loading} role="status">Загружаем заявки...</p>
-      )}
       {applications.isError && (
         <div className={styles.error} role="alert">
           <strong>Не удалось загрузить очередь</strong>
@@ -361,9 +400,7 @@ export function BankWorkspace() {
         }}
       >
         <div className={styles.details}>
-          {detail.isPending && (
-            <p role="status">Загружаем сведения о заявке...</p>
-          )}
+          {detail.isPending && <BankDetailSkeleton />}
           {detail.isError && (
             <div className={styles.error} role="alert">
               <strong>Не удалось загрузить актуальную заявку</strong>
@@ -405,11 +442,13 @@ export function BankWorkspace() {
                       Среднемесячная выручка
                     </dt>
                     <dd>
-                      {applicationForm.isPending
-                        ? 'Загружаем…'
-                        : monthlyRevenue == null
-                          ? 'Не указана'
-                          : formatMoney(monthlyRevenue)}
+                      {applicationForm.isPending ? (
+                        <Skeleton width="8rem" height="1.5rem" />
+                      ) : monthlyRevenue == null ? (
+                        'Не указана'
+                      ) : (
+                        formatMoney(monthlyRevenue)
+                      )}
                     </dd>
                   </div>
                   <div>
@@ -418,7 +457,11 @@ export function BankWorkspace() {
                       Возраст компании на дату заявки
                     </dt>
                     <dd>
-                      {applicationForm.isPending ? 'Загружаем…' : companyAge}
+                      {applicationForm.isPending ? (
+                        <Skeleton width="10rem" height="1.25rem" />
+                      ) : (
+                        companyAge
+                      )}
                     </dd>
                   </div>
                   {isOoo && (
@@ -426,43 +469,51 @@ export function BankWorkspace() {
                       <div>
                         <dt>Годовая выручка</dt>
                         <dd>
-                          {applicationForm.isPending
-                            ? 'Загружаем…'
-                            : financials?.annualRevenue == null
-                              ? 'Не указана'
-                              : formatMoney(financials.annualRevenue)}
+                          {applicationForm.isPending ? (
+                            <Skeleton width="8rem" height="1.5rem" />
+                          ) : financials?.annualRevenue == null ? (
+                            'Не указана'
+                          ) : (
+                            formatMoney(financials.annualRevenue)
+                          )}
                         </dd>
                       </div>
                       <div>
                         <dt>Среднесписочная численность</dt>
                         <dd>
-                          {applicationForm.isPending
-                            ? 'Загружаем…'
-                            : financials?.averageEmployeeCount == null
-                              ? 'Не указана'
-                              : new Intl.NumberFormat('ru-RU').format(
-                                  financials.averageEmployeeCount,
-                                )}
+                          {applicationForm.isPending ? (
+                            <Skeleton width="5rem" height="1.5rem" />
+                          ) : financials?.averageEmployeeCount == null ? (
+                            'Не указана'
+                          ) : (
+                            new Intl.NumberFormat('ru-RU').format(
+                              financials.averageEmployeeCount,
+                            )
+                          )}
                         </dd>
                       </div>
                       <div>
                         <dt>Ежемесячные платежи по кредитам</dt>
                         <dd>
-                          {applicationForm.isPending
-                            ? 'Загружаем…'
-                            : financials?.existingDebt == null
-                              ? 'Не указаны'
-                              : formatMoney(financials.existingDebt)}
+                          {applicationForm.isPending ? (
+                            <Skeleton width="8rem" height="1.5rem" />
+                          ) : financials?.existingDebt == null ? (
+                            'Не указаны'
+                          ) : (
+                            formatMoney(financials.existingDebt)
+                          )}
                         </dd>
                       </div>
                       <div>
                         <dt>Иные ежемесячные обязательства</dt>
                         <dd>
-                          {applicationForm.isPending
-                            ? 'Загружаем…'
-                            : financials?.otherMonthlyObligations == null
-                              ? 'Не указаны'
-                              : formatMoney(financials.otherMonthlyObligations)}
+                          {applicationForm.isPending ? (
+                            <Skeleton width="8rem" height="1.5rem" />
+                          ) : financials?.otherMonthlyObligations == null ? (
+                            'Не указаны'
+                          ) : (
+                            formatMoney(financials.otherMonthlyObligations)
+                          )}
                         </dd>
                       </div>
                     </>

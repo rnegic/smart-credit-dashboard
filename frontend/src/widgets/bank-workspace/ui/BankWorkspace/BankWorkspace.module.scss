@@ -77,14 +77,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.loading {
-  padding: var(--gap-48) var(--gap-24);
-  border-radius: var(--border-radius-16);
-  background: var(--color-light-base-bg-primary);
-  color: var(--color-light-text-secondary);
-  text-align: center;
-}
-
 .secondary,
 .parameters dt {
   color: var(--color-light-text-secondary);
@@ -162,6 +154,59 @@
   overflow-wrap: anywhere;
 }
 
+.detailSkeleton,
+.detailSkeletonHeading,
+.detailSkeletonFacts,
+.detailSkeletonFact,
+.detailSkeletonRows,
+.detailSkeletonRow,
+.detailSkeletonSection {
+  display: grid;
+  gap: var(--gap-12);
+  min-inline-size: 0;
+}
+
+.detailSkeleton {
+  gap: var(--gap-24);
+}
+
+.detailSkeletonHeading {
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: start;
+  gap: var(--gap-12);
+}
+
+.detailSkeletonFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-16);
+}
+
+.detailSkeletonFact {
+  align-content: start;
+  gap: var(--gap-8);
+  padding: var(--gap-16);
+  border-radius: var(--border-radius-16);
+  background: var(--color-light-base-bg-secondary);
+}
+
+.detailSkeletonRows {
+  gap: var(--gap-12);
+}
+
+.detailSkeletonRow {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--gap-12);
+}
+
+.detailSkeletonSection {
+  align-content: start;
+  gap: var(--gap-12);
+  padding: var(--gap-16);
+  border-radius: var(--border-radius-16);
+  background: var(--color-light-status-muted-info);
+}
+
 .section + .section {
   padding-block-start: var(--gap-20);
   border-block-start: calc(var(--gap-2) / 2) solid var(--color-light-neutral-translucent-100);
@@ -212,6 +257,15 @@
   }
 
   .parameters > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--gap-4);
+  }
+
+  .detailSkeletonFacts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .detailSkeletonRow {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--gap-4);
   }

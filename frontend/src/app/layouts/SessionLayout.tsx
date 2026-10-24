@@ -5,6 +5,8 @@ import { useSession, useSessionIntegration } from '@/entities/session'
 import { ApiScopeContext, useSessionTransition } from '@/shared/api'
 import { ROUTES } from '@/shared/config'
 import { RequestState } from '@/shared/ui'
+import { BankSkeleton } from './BankSkeleton'
+import { CabinetSkeleton } from './CabinetSkeleton'
 
 export function SessionLayout() {
   const session = useSession()
@@ -16,6 +18,13 @@ export function SessionLayout() {
     matchPath({ path: ROUTES.login, end: true }, location.pathname) !== null
   const isBankRoute =
     matchPath({ path: ROUTES.bank, end: true }, location.pathname) !== null
+  const pendingFallback = isLoginRoute ? (
+    <RequestState />
+  ) : isBankRoute ? (
+    <BankSkeleton />
+  ) : (
+    <CabinetSkeleton />
+  )
   useEffect(() => {
     const currentUserId = session.data?.userId
     if (currentUserId !== undefined) {
@@ -36,9 +45,9 @@ export function SessionLayout() {
       })
     }
   }, [cache, session.data])
-  if (transition.switching) return isLoginRoute ? <Outlet /> : <RequestState />
+  if (transition.switching) return isLoginRoute ? <Outlet /> : pendingFallback
   if (session.isPending || (!isLoginRoute && !session.data && session.isFetching))
-    return <RequestState />
+    return pendingFallback
   if (session.error)
     return (
       <RequestState
