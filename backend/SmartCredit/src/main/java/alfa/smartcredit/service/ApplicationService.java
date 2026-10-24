@@ -54,6 +54,7 @@ public class ApplicationService {
         c.setLegalForm(legalForm);
     }
 
+    // ... (импорты)
     @Transactional
     public ApplicationView create(Long companyId, ApplicationFormDto form) {
         Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
@@ -62,10 +63,12 @@ public class ApplicationService {
 
         var s1 = form.step1();
         var fin = form.step2().financials();
+        var appData = form.step2().applicant();
 
-        // 1) скоринг (Группы 2-3 ТЗ) и 2) РЕКОМЕНДАЦИЯ DecisionEngine. Итоговое решение выносит сотрудник банка.
+        // 1) Скоринг
         ScoringService.Result r = scoringService.score(company, form);
         DecisionEngine.Decision rec = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r);
+
         if (rec.status() == DecisionStatus.INFO_REQUIRED)
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INFO_REQUIRED", rec.reason());
 
@@ -73,10 +76,15 @@ public class ApplicationService {
         a.setCompanyId(companyId);
         a.setAmount(s1.amount());
         a.setTermDays(s1.termDays());
-        a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));   // legacy-колонка NOT NULL
+        a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));
         a.setRate(r.rate());
         a.setPurpose(s1.purpose());
         a.setBusinessTask(s1.businessTask());
+
+        // Сохраняем поля ООО
+        a.setBusinessScale(r.businessScale());
+        a.setAnnualRevenue(fin.annualRevenue());
+        a.setAverageEmployeeCount(fin.averageEmployeeCount());
 
         a.setRiskScore(r.internalScore());
         a.setRiskClass(r.riskClass().name());
@@ -86,13 +94,19 @@ public class ApplicationService {
                 new ApplicationView.Recommendation(rec.status(), rec.finalRate(), rec.amount(), rec.reason())));
         a.setAiComment(aiCommentService.comment(r, rec, s1.amount(), s1.termDays()));
 
-        // независимо от класса A/B/C и рекомендации заявка идёт к сотруднику; decision/finalRate/offer появятся после его решения
         a.setStatus(ApplicationStatus.IN_REVIEW);
         a = applicationRepository.save(a);
 
-        // сохраняем форму целиком, но личность заявителя берём у сервера, не у клиента
+        // Сохраняем форму
         ObjectNode tree = mapper.valueToTree(form);
         ApplicationFormService.applyCompanyIdentity(tree, company);
+        // Добавляем ОГРН и КПП в форму, если их не было (мок)
+        if ("OOO".equals(company.getLegalForm())) {
+            ObjectNode applicantNode = (ObjectNode) tree.at("/step2_businessData/applicant");
+            applicantNode.put("ogrn", "1157746" + String.format("%06d", a.getId()));
+            applicantNode.put("kpp", "770101001");
+        }
+
         tree.put("applicationId", "app_2026_" + String.format("%04d", a.getId()));
         tree.put("status", "SUBMITTED");
         a.setFormData(tree);
@@ -106,6 +120,7 @@ public class ApplicationService {
 
         return toView(a, company, false);
     }
+// ... (остальной код без изменений)
 
     @Transactional(readOnly = true)
     public JsonNode getFormForBank(Long id) {
@@ -226,7 +241,15 @@ public class ApplicationService {
     /** finalRate при ручном APPROVE (для MANUAL_REVIEW автоматом ставка не считается): rate + премия класса + отраслевая. */
     private BigDecimal manualFinalRate(CreditApplication a, int termDays) {
         Company c = companyRepository.findById(a.getCompanyId()).orElseThrow();
-        BigDecimal rate = a.getRate() != null ? a.getRate() : ProductRules.baseRate(termDays);
+
+        // Берем масштаб из заявки. Если его нет (например, для старых заявок или ИП),
+        // ставим MICRO по умолчанию, чтобы избежать NullPointerException.
+        ProductRules.BusinessScale scale = a.getBusinessScale() != null
+                ? a.getBusinessScale()
+                : ProductRules.BusinessScale.MICRO;
+
+        BigDecimal rate = a.getRate() != null ? a.getRate() : ProductRules.baseRate(scale, termDays);
+
         return decisionEngine.finalRate(rate, RiskClass.parse(a.getRiskClass()),
                 IndustryDirectory.byOkved(c.getOkved()).ratePremium());
     }

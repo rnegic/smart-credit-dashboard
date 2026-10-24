@@ -14,14 +14,12 @@ import java.math.RoundingMode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Расчёт производных полей и internalScore (0..100) строго по ТЗ. */
 @Service
 @RequiredArgsConstructor
 public class ScoringService {
 
     private final ExternalDataService externalData;
 
-    /** Снимок скоринга: Группы 2 и 3 из ТЗ. Хранится в credit_applications.scoring_data и отдаётся в ApplicationView. */
     public record Result(
             BigDecimal rate,
             double termMonthsEquivalent,
@@ -31,19 +29,19 @@ public class ScoringService {
             @JsonProperty("isDataComplete") boolean dataComplete,
             int internalScore,
             RiskClass riskClass,
-            BkiZone bkiZone,                       // только для UI менеджера банка
+            BkiZone bkiZone,
             double industryLimitCoef,
             double industryRatePremium,
             BigDecimal absoluteMaxAmount,
             BigDecimal calculatedLimit,
-            ExternalDataService.ExternalData external,  // только для банка
-            Map<String, Integer> points) {              // только для банка: баллы по критериям
+            ProductRules.BusinessScale businessScale, // Добавлен масштаб
+            ExternalDataService.ExternalData external,
+            Map<String, Integer> points) {
 
-        /** Версия для клиента: без внутренних данных банка (bkiZone, данные БКИ/ФНС, разбивка баллов). */
         public Result forClient() {
             return new Result(rate, termMonthsEquivalent, newMonthlyPayment, dtiPercent, amountToRevenue,
                     dataComplete, internalScore, riskClass, null, industryLimitCoef, industryRatePremium,
-                    absoluteMaxAmount, calculatedLimit, null, null);
+                    absoluteMaxAmount, calculatedLimit, businessScale, null, null);
         }
     }
 
@@ -51,10 +49,15 @@ public class ScoringService {
         if (f == null || f.step1() == null || f.step2() == null || f.step2().financials() == null) return false;
         var s1 = f.step1();
         var fin = f.step2().financials();
+
+        boolean oooComplete = "OOO".equals(f.step2().applicant().type())
+                ? (fin.annualRevenue() != null && fin.averageEmployeeCount() != null)
+                : true; // Для ИП не обязательно
+
         return s1.amount() != null && s1.amount().compareTo(ProductRules.MIN_AMOUNT) >= 0
                 && s1.termDays() != null && ProductRules.TERM_DAYS.contains(s1.termDays())
                 && fin.monthlyRevenue() != null && fin.monthlyRevenue().signum() > 0
-                && fin.existingDebt() != null;
+                && fin.existingDebt() != null && oooComplete;
     }
 
     public Result score(Company c, ApplicationFormDto form) {
@@ -62,24 +65,36 @@ public class ScoringService {
         IndustryDirectory.Industry industry = IndustryDirectory.byOkved(c.getOkved());
 
         if (!isDataComplete(form)) {
-            // Шаг 1 DecisionEngine остановит заявку (INFO_REQUIRED); считать остальное нечем.
             return new Result(null, 0, null, 0, 0, false, 0, RiskClass.D, BkiZone.fromScore(ext.bkiScore()),
-                    industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, null, ext, Map.of());
+                    industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, null,
+                    ProductRules.BusinessScale.NEEDS_REVIEW, ext, Map.of());
         }
+
+        var applicant = form.step2().applicant();
+        var fin = form.step2().financials();
+
+        // 1. Определение масштаба бизнеса
+        ProductRules.BusinessScale scale = "OOO".equals(applicant.type())
+                ? ProductRules.calculateScale(fin.annualRevenue(), fin.averageEmployeeCount())
+                : ProductRules.BusinessScale.MICRO; // Для ИП по умолчанию (или своя логика)
 
         BigDecimal amount = form.step1().amount();
         int termDays = form.step1().termDays();
-        BigDecimal revenue = form.step2().financials().monthlyRevenue();
-        BigDecimal debt = form.step2().financials().existingDebt();
+        BigDecimal revenue = fin.monthlyRevenue();
+        BigDecimal totalDebt = fin.existingDebt().add(fin.otherMonthlyObligations());
 
-        BigDecimal rate = ProductRules.baseRate(termDays);
+        // 2. Базовая ставка по масштабу и сроку
+        BigDecimal rate = ProductRules.baseRate(scale, termDays);
         double termMonthsEq = termDays / (double) ProductRules.DAYS_IN_MONTH;
         BigDecimal newPayment = monthlyPayment(amount, rate, termDays);
 
-        double dti = debt.add(newPayment).multiply(BigDecimal.valueOf(100))
+        // 3. DTI: (Существующие долги + Новый платеж) / Месячная выручка * 100
+        double dti = totalDebt.add(newPayment).multiply(BigDecimal.valueOf(100))
                 .divide(revenue, 2, RoundingMode.HALF_UP).doubleValue();
-        double amountToRevenue = amount.divide(revenue.multiply(BigDecimal.valueOf(12)), 4, RoundingMode.HALF_UP)
-                .doubleValue();
+
+        // 4. Amount to Revenue: Сумма / Годовая выручка
+        BigDecimal annualRev = fin.annualRevenue() != null ? fin.annualRevenue() : revenue.multiply(BigDecimal.valueOf(12));
+        double amountToRevenue = amount.divide(annualRev, 4, RoundingMode.HALF_UP).doubleValue();
 
         Map<String, Integer> pts = new LinkedHashMap<>();
         pts.put("bkiScore", bkiPoints(ext.bkiScore()));
@@ -90,9 +105,8 @@ public class ScoringService {
         pts.put("dtiPercent", dtiPoints(dti));
         pts.put("amountToRevenue", amountToRevenuePoints(amountToRevenue));
         pts.put("isDataComplete", 5);
-        int score = pts.values().stream().mapToInt(Integer::intValue).sum();   // 0..100
+        int score = pts.values().stream().mapToInt(Integer::intValue).sum();
 
-        // calculatedLimit: см. допущение в ProductRules.LIMIT_REVENUE_MULTIPLIER
         BigDecimal limit = revenue.multiply(ProductRules.LIMIT_REVENUE_MULTIPLIER)
                 .multiply(BigDecimal.valueOf(industry.limitCoef()))
                 .min(ProductRules.ABSOLUTE_MAX_AMOUNT)
@@ -100,22 +114,17 @@ public class ScoringService {
 
         return new Result(rate, termMonthsEq, newPayment, dti, amountToRevenue, true, score,
                 RiskClass.fromScore(score), BkiZone.fromScore(ext.bkiScore()),
-                industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, limit, ext, pts);
+                industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, limit, scale, ext, pts);
     }
 
-    /**
-     * newMonthlyPayment = amount / termMonthsEquivalent + amount * (rate/100) * (termDays/365).
-     * Пример из ТЗ: 1 000 000, 30 дней, 20% → 1 016 438.36.
-     */
     public BigDecimal monthlyPayment(BigDecimal amount, BigDecimal ratePercent, int termDays) {
+        if (ratePercent == null) return BigDecimal.ZERO;
         BigDecimal principalPerMonth = amount.multiply(BigDecimal.valueOf(ProductRules.DAYS_IN_MONTH))
                 .divide(BigDecimal.valueOf(termDays), 10, RoundingMode.HALF_UP);
         BigDecimal interest = amount.multiply(ratePercent).multiply(BigDecimal.valueOf(termDays))
                 .divide(BigDecimal.valueOf(100L * ProductRules.DAYS_IN_YEAR), 10, RoundingMode.HALF_UP);
         return principalPerMonth.add(interest).setScale(2, RoundingMode.HALF_UP);
     }
-
-    // ---- таблицы баллов из ТЗ (итого максимум 100) ----
 
     static int bkiPoints(int s)            { return s >= 750 ? 20 : s >= 600 ? 14 : s >= 450 ? 8 : 0; }
     static int delinquencyPoints(int n)    { return n == 0 ? 15 : n == 1 ? 7 : 0; }

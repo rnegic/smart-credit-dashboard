@@ -50,10 +50,13 @@ public class DashboardService {
         return new DashboardResponse(
                 new DashboardResponse.CompanyDto(company.getId(), company.getName(),
                         company.getInn(), company.getOkved(), company.getLegalForm()),
-                app == null ? null : new DashboardResponse.ApplicationDto(app.getId(), app.getAmount(),
-                        termDays(app.getTermDays(), app.getTermMonths()), app.getRate(), app.getPurpose(),
-                        app.getStatus().name(), app.getDecision() == null ? null : app.getDecision().name(),
-                        app.getFinalRate(), app.getCreatedAt()),
+                app == null ? null : new DashboardResponse.ApplicationDto(
+                        app.getId(), app.getAmount(), termDays(app.getTermDays(), app.getTermMonths()),
+                        app.getRate(), app.getPurpose(), app.getStatus().name(),
+                        app.getDecision() == null ? null : app.getDecision().name(),
+                        app.getFinalRate(), app.getBusinessScale() != null ? app.getBusinessScale().name() : null,
+                        app.getCreatedAt()
+                ),
                 buildStages(app),
                 buildActions(app),
                 offers,

@@ -26,17 +26,10 @@ public record ApplicationFormDto(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Step1(
             @NotBlank @Size(max = 500) String businessTask,
-            /** Сумма кредита: от 50 000 до 20 000 000 ₽. */
             @NotNull @DecimalMin("50000") @DecimalMax("20000000") BigDecimal amount,
-            /** Срок транша в днях: только 30, 60 или 90. */
             @NotNull @ValidTermDays Integer termDays,
-            /** Базовая ставка (24.50 / 24.75 / 25.00). Вычисляется сервером по termDays, значение от клиента игнорируется. */
-            BigDecimal rate,
-            @NotBlank @Size(max = 100) String purpose) {
-        public Step1 {
-            rate = ProductRules.baseRate(termDays);
-        }
-    }
+            BigDecimal rate, // рассчитывается на бэкенде
+            @NotBlank @Size(max = 100) String purpose) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Step2(@NotNull @Valid Applicant applicant, @NotNull @Valid Financials financials) {}
@@ -45,18 +38,21 @@ public record ApplicationFormDto(
     public record Applicant(
             String type, String companyName, String inn, String taxSystem,
             String firstName, String lastName, String middleName,
-            String ogrnip, String ogrn, LocalDate registrationDate,
-            String mainOkved, String industry, String phone, String email,
+            String ogrnip, String ogrn, String kpp, // Добавлены поля для ООО
+            LocalDate registrationDate, String mainOkved, String industry, String phone, String email,
             String registrationAddress) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Financials(
-            /** Среднемесячная выручка, &gt; 0. */
             @NotNull @DecimalMin(value = "0", inclusive = false) BigDecimal monthlyRevenue,
-            /** Платёж по текущим кредитам в месяц, &gt;= 0; если не передан, считается 0. */
-            @DecimalMin("0") BigDecimal existingDebt) {
+            @DecimalMin("0") BigDecimal existingDebt,
+            @DecimalMin("0") BigDecimal annualRevenue,         // Для ООО (Масштаб)
+            @DecimalMin("0") Integer averageEmployeeCount,     // Для ООО (Масштаб)
+            @DecimalMin("0") BigDecimal otherMonthlyObligations // Иные обязательства
+    ) {
         public Financials {
             if (existingDebt == null) existingDebt = BigDecimal.ZERO;
+            if (otherMonthlyObligations == null) otherMonthlyObligations = BigDecimal.ZERO;
         }
     }
 

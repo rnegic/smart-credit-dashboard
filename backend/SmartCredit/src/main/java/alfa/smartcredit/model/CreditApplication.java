@@ -2,6 +2,7 @@ package alfa.smartcredit.model;
 
 import alfa.smartcredit.model.enums.ApplicationStatus;
 import alfa.smartcredit.model.enums.DecisionStatus;
+import alfa.smartcredit.service.ProductRules;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,30 +30,35 @@ public class CreditApplication {
     @Enumerated(EnumType.STRING) private ApplicationStatus status;
     @Column(name = "created_at") private Instant createdAt = Instant.now();
 
-    @Column(name = "risk_score")
-    private Integer riskScore;
-    @Column(name = "risk_class")
-    private String riskClass;
-    @Column(name = "ai_comment")
-    private String aiComment;
-    @Column(name = "officer_comment")
-    private String officerComment;
+    @Column(name = "risk_score") private Integer riskScore;
+    @Column(name = "risk_class") private String riskClass;
+    @Column(name = "ai_comment") private String aiComment;
+    @Column(name = "officer_comment") private String officerComment;
     @Column(name = "business_task") private String businessTask;
 
-    @Column(name = "term_days") private Integer termDays;               // 30 | 60 | 90
-    private BigDecimal rate;                                            // базовая ставка по сроку
-    @Column(name = "final_rate") private BigDecimal finalRate;          // итоговая ставка (DecisionEngine)
-    @Enumerated(EnumType.STRING) private DecisionStatus decision;       // решение DecisionEngine
+    @Column(name = "term_days") private Integer termDays;
+    private BigDecimal rate;
+    @Column(name = "final_rate") private BigDecimal finalRate;
+    @Enumerated(EnumType.STRING) private DecisionStatus decision;
     @Column(name = "calculated_limit") private BigDecimal calculatedLimit;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "scoring_data")
-    private JsonNode scoringData;                                       // снимок скоринга
+    // Новые поля для ООО
+    @Enumerated(EnumType.STRING)
+    @Column(name = "business_scale")
+    private ProductRules.BusinessScale businessScale;
+
+    @Column(name = "annual_revenue")
+    private BigDecimal annualRevenue;
+
+    @Column(name = "average_employee_count")
+    private Integer averageEmployeeCount;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    private JsonNode recommendation;                                    // рекомендация системы для сотрудника банка
+    @Column(name = "scoring_data") private JsonNode scoringData;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "form_data")
-    private JsonNode formData;
+    private JsonNode recommendation;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "form_data") private JsonNode formData;
 }

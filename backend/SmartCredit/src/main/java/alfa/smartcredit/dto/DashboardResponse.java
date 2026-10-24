@@ -19,7 +19,7 @@ public record DashboardResponse(
 
     public record ApplicationDto(Long id, BigDecimal amount, Integer termDays, BigDecimal rate,
                                  String purpose, String status, String decision, BigDecimal finalRate,
-                                 Instant createdAt) {}
+                                 String businessScale, Instant createdAt) {}
 
     public record StageDto(String code, String title, String state) {}
 

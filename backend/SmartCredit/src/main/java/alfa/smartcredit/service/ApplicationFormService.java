@@ -32,12 +32,20 @@ public class ApplicationFormService {
         AiExtractionService.Extracted x = ai.extract(text);
         boolean ip = "IP".equals(c.getLegalForm());
 
+        // ВАЖНО: передаем null для annualRevenue, averageEmployeeCount и otherMonthlyObligations,
+        // так как ИИ их пока не извлекает. Фронт или пользователь заполнит их на шаге 2.
         ApplicationFormDto form = new ApplicationFormDto(
                 null, Instant.now(), "DRAFT",
                 new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termDays(), null, x.purpose()),
                 new ApplicationFormDto.Step2(
                         registryMock(c, x, phone, email),
-                        new ApplicationFormDto.Financials(x.monthlyRevenue(), x.existingDebt())),
+                        new ApplicationFormDto.Financials(
+                                x.monthlyRevenue(),
+                                x.existingDebt(),
+                                null, // annualRevenue
+                                null, // averageEmployeeCount
+                                null  // otherMonthlyObligations
+                        )),
                 new ApplicationFormDto.Prefilled(ip ? "EGRIP_MOCK" : "EGRUL_MOCK", Instant.now(), false),
                 new ApplicationFormDto.Step3(new ApplicationFormDto.Consents(false, false, false, null)),
                 new ApplicationFormDto.Meta("1.3", List.of("form_started")));
@@ -50,7 +58,8 @@ public class ApplicationFormService {
         track(x.purpose() != null,      s1 + "purpose", filled, missing);
         track(x.monthlyRevenue() != null, s2 + "financials.monthlyRevenue", filled, missing);
         track(x.existingDebt() != null, s2 + "financials.existingDebt", filled, missing);
-        // контакты берём из личного кабинета (БД); если их там нет, клиент заполнит сам
+
+        // Контакты берём из личного кабинета (БД); если их там нет, клиент заполнит сам
         track(phone != null, s2 + "applicant.phone", filled, missing);
         track(email != null, s2 + "applicant.email", filled, missing);
         if (x.industry() != null) filled.add(s2 + "applicant.industry");
@@ -87,12 +96,18 @@ public class ApplicationFormService {
             first = p.length > 1 ? p[1] : null;
             middle = p.length > 2 ? p[2] : null;
         }
+
         String ogrnip = ip ? ("3" + c.getInn().repeat(3)).substring(0, 15) : null;
         String ogrn = ip ? null : ("1" + c.getInn().repeat(3)).substring(0, 13);
+        // Мок КПП для ООО
+        String kpp = ip ? null : "770101001";
 
+        // Передаем kpp в правильном порядке (после ogrn)
         return new ApplicationFormDto.Applicant(
                 c.getLegalForm(), c.getName(), c.getInn(), x.taxSystem(),
-                first, last, middle, ogrnip, ogrn, reg, c.getOkved(),
+                first, last, middle,
+                ogrnip, ogrn, kpp,
+                reg, c.getOkved(),
                 x.industry(), blankToNull(phone), blankToNull(email), "г. Москва (данные реестра, демо)");
     }
 }
