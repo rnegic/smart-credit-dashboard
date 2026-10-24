@@ -17,6 +17,7 @@ export const applicationApplicantSchema = z.object({
   middleName: optionalTextSchema,
   ogrnip: optionalTextSchema,
   ogrn: optionalTextSchema,
+  kpp: optionalTextSchema.optional(),
   registrationDate: z.iso.date().nullable(),
   mainOkved: optionalTextSchema,
   industry: optionalTextSchema,
@@ -41,6 +42,9 @@ export const applicationFormSchema = z.object({
     financials: z.object({
       monthlyRevenue: optionalNumberSchema,
       existingDebt: optionalNumberSchema,
+      annualRevenue: optionalNumberSchema.optional(),
+      averageEmployeeCount: z.number().int().nullable().optional(),
+      otherMonthlyObligations: optionalNumberSchema.optional(),
     }),
   }),
   prefilled: z
@@ -78,12 +82,18 @@ export const applicationBusinessSummarySchema = z
     step2_businessData: z
       .object({
         applicant: applicationApplicantSchema
-          .pick({ registrationDate: true, mainOkved: true })
+          .pick({
+            type: true,
+            companyName: true,
+            ogrn: true,
+            kpp: true,
+            registrationDate: true,
+            mainOkved: true,
+          })
           .partial()
           .nullish(),
         financials:
           applicationFormSchema.shape.step2_businessData.shape.financials
-            .pick({ monthlyRevenue: true })
             .partial()
             .nullish(),
       })
@@ -94,7 +104,7 @@ export const applicationBusinessSummarySchema = z
 /** Required submission fields; incoming forms and drafts may remain incomplete. */
 export const applicationApplicantSubmissionSchema =
   applicationApplicantSchema.extend({
-    type: requiredText('Укажите форму бизнеса'),
+    type: z.literal('IP'),
     companyName: requiredText('Укажите название'),
     inn: requiredText('Укажите ИНН').regex(
       /^\d{12}$/,
@@ -133,6 +143,62 @@ export const applicationApplicantSubmissionSchema =
     ),
   })
 
+/** Corporate applicants have their own registry identifiers and tax regimes. */
+export const oooApplicantSubmissionSchema = applicationApplicantSchema.extend({
+  ...applicationApplicantSubmissionSchema.pick({
+    registrationDate: true,
+    mainOkved: true,
+    industry: true,
+    phone: true,
+    email: true,
+  }).shape,
+  type: z.literal('OOO'),
+  companyName: requiredText('Укажите наименование организации').max(
+    255,
+    'Наименование должно быть не длиннее 255 символов',
+  ),
+  inn: requiredText('Укажите ИНН организации').regex(
+    /^\d{10}$/,
+    'ИНН ООО должен содержать 10 цифр',
+  ),
+  ogrn: requiredText('Укажите ОГРН').regex(
+    /^\d{13}$/,
+    'ОГРН должен содержать 13 цифр',
+  ),
+  kpp: requiredText('Укажите КПП').regex(
+    /^\d{9}$/,
+    'КПП должен содержать 9 цифр',
+  ),
+  taxSystem: z.enum(['OSNO', 'USN', 'AUSN', 'ESHN', 'OTHER'], {
+    error: 'Выберите систему налогообложения ООО',
+  }),
+  registrationAddress: requiredText('Укажите юридический адрес'),
+})
+
+const financialsSubmissionSchema = z.object({
+  monthlyRevenue: z
+    .number({ error: 'Укажите среднемесячную выручку' })
+    .positive('Среднемесячная выручка должна быть больше 0 ₽'),
+  existingDebt: z
+    .number({ error: 'Укажите ежемесячный платеж от 0 ₽' })
+    .min(0, 'Платеж не может быть отрицательным'),
+})
+
+/** Annual revenue and headcount are supplied independently for server scoring. */
+export const oooFinancialsSubmissionSchema = financialsSubmissionSchema.extend({
+  annualRevenue: z
+    .number({ error: 'Укажите годовую выручку от 0 ₽' })
+    .min(0, 'Годовая выручка не может быть отрицательной'),
+  averageEmployeeCount: z
+    .number({ error: 'Укажите среднесписочную численность' })
+    .int('Численность должна быть целым числом')
+    .min(0, 'Численность не может быть отрицательной')
+    .max(2_147_483_647, 'Укажите корректную численность'),
+  otherMonthlyObligations: z
+    .number({ error: 'Укажите иные обязательства от 0 ₽' })
+    .min(0, 'Иные обязательства не могут быть отрицательными'),
+})
+
 export const applicationFormSubmissionSchema = applicationFormSchema.extend({
   step1_financingParameters: z.object({
     businessTask: z.string().trim().min(1, 'Опишите бизнес-задачу').max(500),
@@ -145,15 +211,16 @@ export const applicationFormSubmissionSchema = applicationFormSchema.extend({
     }),
     purpose: z.string().trim().min(1, 'Укажите цель финансирования').max(100),
   }),
-  step2_businessData: z.object({
-    applicant: applicationApplicantSubmissionSchema,
-    financials: z.object({
-      monthlyRevenue: z
-        .number()
-        .positive('Среднемесячная выручка должна быть больше 0 ₽'),
-      existingDebt: z.number().min(0, 'Платеж не может быть отрицательным'),
+  step2_businessData: z.union([
+    z.object({
+      applicant: applicationApplicantSubmissionSchema,
+      financials: financialsSubmissionSchema,
     }),
-  }),
+    z.object({
+      applicant: oooApplicantSubmissionSchema,
+      financials: oooFinancialsSubmissionSchema,
+    }),
+  ]),
   step3_verification: z.object({
     consents: z.object({
       personalData: z.literal(true, {
