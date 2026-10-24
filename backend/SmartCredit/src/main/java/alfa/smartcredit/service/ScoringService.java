@@ -34,7 +34,7 @@ public class ScoringService {
             double industryRatePremium,
             BigDecimal absoluteMaxAmount,
             BigDecimal calculatedLimit,
-            ProductRules.BusinessScale businessScale, // Добавлен масштаб
+            ProductRules.BusinessScale businessScale, // только для ООО, у ИП null
             ExternalDataService.ExternalData external,
             Map<String, Integer> points) {
 
@@ -45,17 +45,21 @@ public class ScoringService {
         }
     }
 
+    /** Совместимость со старыми вызовами: форма юрлица берётся из анкеты. */
     public boolean isDataComplete(ApplicationFormDto f) {
+        boolean ooo = f != null && f.step2() != null && f.step2().applicant() != null
+                && ProductRules.isOoo(f.step2().applicant().type());
+        return isDataComplete(f, ooo);
+    }
+
+    public boolean isDataComplete(ApplicationFormDto f, boolean ooo) {
         if (f == null || f.step1() == null || f.step2() == null || f.step2().financials() == null) return false;
         var s1 = f.step1();
         var fin = f.step2().financials();
 
-        // Для ООО годовая выручка должна быть строго > 0: иначе amount/annualRevenue
-        // не определено. Для ИП annualRevenue опционален (используем monthlyRevenue × 12).
-        boolean oooComplete = "OOO".equals(f.step2().applicant().type())
-                ? (fin.annualRevenue() != null && fin.annualRevenue().signum() > 0
-                && fin.averageEmployeeCount() != null)
-                : true;
+        // ООО: годовая выручка строго > 0 (по ней считаются масштаб и amountToRevenue) + численность.
+        boolean oooComplete = !ooo || (fin.annualRevenue() != null && fin.annualRevenue().signum() > 0
+                && fin.averageEmployeeCount() != null);
 
         return s1.amount() != null && s1.amount().compareTo(ProductRules.MIN_AMOUNT) >= 0
                 && s1.termDays() != null && ProductRules.TERM_DAYS.contains(s1.termDays())
@@ -64,40 +68,44 @@ public class ScoringService {
     }
 
     public Result score(Company c, ApplicationFormDto form) {
+        // Форма юрлица берём из компании (надёжнее, чем из анкеты, которую присылает клиент).
+        final String legalForm = c.getLegalForm();
+        final boolean ooo = ProductRules.isOoo(legalForm);
+
         ExternalDataService.ExternalData ext = externalData.fetch(c);
         IndustryDirectory.Industry industry = IndustryDirectory.byOkved(c.getOkved());
 
-        if (!isDataComplete(form)) {
-            return new Result(null, 0, null, 0, 0, false, 0, RiskClass.D, BkiZone.fromScore(ext.bkiScore()),
+        if (!isDataComplete(form, ooo)) {
+            return new Result(null, 0, null, 0, 0, false, 0, RiskClass.D, BkiZone.fromScore(ext.bkiScore(), ooo),
                     industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, null,
-                    ProductRules.BusinessScale.NEEDS_REVIEW, ext, Map.of());
+                    ooo ? ProductRules.BusinessScale.NEEDS_REVIEW : null, ext, Map.of());
         }
 
-        var applicant = form.step2().applicant();
         var fin = form.step2().financials();
-
-        // 1. Определение масштаба бизнеса
-        ProductRules.BusinessScale scale = "OOO".equals(applicant.type())
-                ? ProductRules.calculateScale(fin.annualRevenue(), fin.averageEmployeeCount())
-                : ProductRules.BusinessScale.MICRO; // Для ИП по умолчанию (или своя логика)
-
         BigDecimal amount = form.step1().amount();
         int termDays = form.step1().termDays();
         BigDecimal revenue = fin.monthlyRevenue();
-        BigDecimal totalDebt = fin.existingDebt().add(fin.otherMonthlyObligations());
 
-        // 2. Базовая ставка по масштабу и сроку
-        BigDecimal rate = ProductRules.baseRate(scale, termDays);
+        // 1. Масштаб бизнеса: только ООО (у ИП ставка от масштаба не зависит)
+        ProductRules.BusinessScale scale = ooo
+                ? ProductRules.calculateScale(fin.annualRevenue(), fin.averageEmployeeCount())
+                : null;
+
+        // 2. Ставка: ИП - по сроку (24.50/24.75/25.00), ООО - матрица масштаб x срок
+        BigDecimal rate = ProductRules.baseRate(legalForm, scale, termDays);
         double termMonthsEq = termDays / (double) ProductRules.DAYS_IN_MONTH;
         BigDecimal newPayment = monthlyPayment(amount, rate, termDays);
 
-        // 3. DTI: (Существующие долги + Новый платеж) / Месячная выручка * 100
+        // 3. totalDebt = платежи по кредитам + иные обязательства (для ИП иных обязательств нет -> 0)
+        BigDecimal other = fin.otherMonthlyObligations() == null ? BigDecimal.ZERO : fin.otherMonthlyObligations();
+        BigDecimal totalDebt = fin.existingDebt().add(other);
+
+        // 4. DTI = (totalDebt + newMonthlyPayment) / monthlyRevenue * 100
         double dti = totalDebt.add(newPayment).multiply(BigDecimal.valueOf(100))
                 .divide(revenue, 2, RoundingMode.HALF_UP).doubleValue();
 
-        // 4. Amount to Revenue: Сумма / Годовая выручка.
-        // Защита от деления на 0: если годовая выручка не задана или 0, берём monthlyRevenue × 12.
-        BigDecimal annualRev = fin.annualRevenue() != null && fin.annualRevenue().signum() > 0
+        // 5. amountToRevenue = amount / годовая выручка (ИП: monthlyRevenue * 12)
+        BigDecimal annualRev = ooo
                 ? fin.annualRevenue()
                 : revenue.multiply(BigDecimal.valueOf(12));
         double amountToRevenue = amount.divide(annualRev, 4, RoundingMode.HALF_UP).doubleValue();
@@ -113,16 +121,22 @@ public class ScoringService {
         pts.put("isDataComplete", 5);
         int score = pts.values().stream().mapToInt(Integer::intValue).sum();
 
-        BigDecimal limit = revenue.multiply(ProductRules.LIMIT_REVENUE_MULTIPLIER)
-                .multiply(BigDecimal.valueOf(industry.limitCoef()))
-                .min(ProductRules.ABSOLUTE_MAX_AMOUNT)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal limit = calculatedLimit(revenue, industry.limitCoef());
 
         return new Result(rate, termMonthsEq, newPayment, dti, amountToRevenue, true, score,
-                RiskClass.fromScore(score), BkiZone.fromScore(ext.bkiScore()),
+                RiskClass.fromScore(score), BkiZone.fromScore(ext.bkiScore(), ooo),
                 industry.limitCoef(), industry.ratePremium(), ProductRules.ABSOLUTE_MAX_AMOUNT, limit, scale, ext, pts);
     }
 
+    /** calculatedLimit = min(monthlyRevenue * industryLimitCoef * 3, absoluteMaxAmount). */
+    public BigDecimal calculatedLimit(BigDecimal monthlyRevenue, double industryLimitCoef) {
+        return monthlyRevenue.multiply(ProductRules.LIMIT_REVENUE_MULTIPLIER)
+                .multiply(BigDecimal.valueOf(industryLimitCoef))
+                .min(ProductRules.ABSOLUTE_MAX_AMOUNT)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** newMonthlyPayment = amount / termMonthsEquivalent + amount * rate% * termDays / 365. */
     public BigDecimal monthlyPayment(BigDecimal amount, BigDecimal ratePercent, int termDays) {
         if (ratePercent == null) return BigDecimal.ZERO;
         BigDecimal principalPerMonth = amount.multiply(BigDecimal.valueOf(ProductRules.DAYS_IN_MONTH))

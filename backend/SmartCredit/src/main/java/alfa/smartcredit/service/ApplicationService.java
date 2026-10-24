@@ -67,7 +67,7 @@ public class ApplicationService {
 
         // 1) Скоринг
         ScoringService.Result r = scoringService.score(company, form);
-        DecisionEngine.Decision rec = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r);
+        DecisionEngine.Decision rec = decisionEngine.decide(s1.amount(), fin.monthlyRevenue(), r, company.getLegalForm());
 
         if (rec.status() == DecisionStatus.INFO_REQUIRED)
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "INFO_REQUIRED", rec.reason());
@@ -120,7 +120,6 @@ public class ApplicationService {
 
         return toView(a, company, false);
     }
-// ... (остальной код без изменений)
 
     @Transactional(readOnly = true)
     public JsonNode getFormForBank(Long id) {
@@ -334,13 +333,10 @@ public class ApplicationService {
     private BigDecimal manualFinalRate(CreditApplication a, int termDays) {
         Company c = companyRepository.findById(a.getCompanyId()).orElseThrow();
 
-        // Берем масштаб из заявки. Если его нет (например, для старых заявок или ИП),
-        // ставим MICRO по умолчанию, чтобы избежать NullPointerException.
-        ProductRules.BusinessScale scale = a.getBusinessScale() != null
-                ? a.getBusinessScale()
-                : ProductRules.BusinessScale.MICRO;
-
-        BigDecimal rate = a.getRate() != null ? a.getRate() : ProductRules.baseRate(scale, termDays);
+        // ИП: ставка зависит только от срока; ООО: от масштаба и срока. Масштаб берём из заявки (для ИП его нет).
+        BigDecimal rate = a.getRate() != null
+                ? a.getRate()
+                : ProductRules.baseRate(c.getLegalForm(), a.getBusinessScale(), termDays);
 
         return decisionEngine.finalRate(rate, RiskClass.parse(a.getRiskClass()),
                 IndustryDirectory.byOkved(c.getOkved()).ratePremium());

@@ -3,7 +3,6 @@ package alfa.smartcredit.service;
 import alfa.smartcredit.model.enums.RiskClass;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Set;
 
 public final class ProductRules {
@@ -15,32 +14,45 @@ public final class ProductRules {
     public static final int DAYS_IN_YEAR = 365;
     public static final int DAYS_IN_MONTH = 30;
 
-    public static final BigDecimal LIMIT_REVENUE_MULTIPLIER = new BigDecimal("3");
     public static final int INADEQUATE_REQUEST_REVENUE_MONTHS = 6;
+
+    /** calculatedLimit = min(monthlyRevenue * industryLimitCoef * 3, absoluteMaxAmount). */
+    public static final BigDecimal LIMIT_REVENUE_MULTIPLIER = new BigDecimal("3");
 
     public enum BusinessScale {
         MICRO, SMALL, OUT_OF_SCOPE, NEEDS_REVIEW
     }
 
-    /** Расчет масштаба бизнеса по ТЗ (Годовая выручка + Численность) */
+    public static boolean isOoo(String legalForm) {
+        return "OOO".equals(legalForm);
+    }
+
+    /** Масштаб бизнеса (только ООО): годовая выручка + численность. */
     public static BusinessScale calculateScale(BigDecimal annualRevenue, Integer employeeCount) {
         if (annualRevenue == null || employeeCount == null) return BusinessScale.NEEDS_REVIEW;
-
-        // MICRO: выручка <= 120 млн, сотрудников <= 15
         if (annualRevenue.compareTo(new BigDecimal("120000000")) <= 0 && employeeCount <= 15) {
             return BusinessScale.MICRO;
         }
-        // SMALL: выручка <= 800 млн, сотрудников <= 100
         if (annualRevenue.compareTo(new BigDecimal("800000000")) <= 0 && employeeCount <= 100) {
             return BusinessScale.SMALL;
         }
         return BusinessScale.OUT_OF_SCOPE;
     }
 
-    /** Базовая ставка rate для ООО (масштаб + срок) */
-    public static BigDecimal baseRate(BusinessScale scale, Integer termDays) {
-        if (termDays == null || scale == null) return null;
+    /** Ставка rate для ИП: зависит только от срока транша (ТЗ для ИП). */
+    public static BigDecimal ipRate(Integer termDays) {
+        if (termDays == null) return null;
+        return switch (termDays) {
+            case 30 -> new BigDecimal("24.50");
+            case 60 -> new BigDecimal("24.75");
+            case 90 -> new BigDecimal("25.00");
+            default -> null;
+        };
+    }
 
+    /** Матрица baseRate для ООО: масштаб + срок (ТЗ для ООО). */
+    public static BigDecimal oooBaseRate(BusinessScale scale, Integer termDays) {
+        if (termDays == null || scale == null) return null;
         if (scale == BusinessScale.MICRO) {
             return switch (termDays) {
                 case 30 -> new BigDecimal("20.00");
@@ -48,7 +60,8 @@ public final class ProductRules {
                 case 90 -> new BigDecimal("24.00");
                 default -> null;
             };
-        } else if (scale == BusinessScale.SMALL) {
+        }
+        if (scale == BusinessScale.SMALL) {
             return switch (termDays) {
                 case 30 -> new BigDecimal("19.00");
                 case 60 -> new BigDecimal("21.00");
@@ -56,10 +69,18 @@ public final class ProductRules {
                 default -> null;
             };
         }
-        // Для OUT_OF_SCOPE ставка не рассчитывается
         return null;
     }
 
+    /** Единая точка: ИП -> ставка по сроку, ООО -> матрица по масштабу и сроку. */
+    public static BigDecimal baseRate(String legalForm, BusinessScale scale, Integer termDays) {
+        return isOoo(legalForm) ? oooBaseRate(scale, termDays) : ipRate(termDays);
+    }
+
+    /**
+     * Надбавка за класс риска, применяется ТОЛЬКО в ALTERNATIVE_OFFER: A +0.10, B +0.25, C +0.50.
+     * В APPROVED надбавка за класс не добавляется (rate + industryRatePremium).
+     */
     public static BigDecimal riskPremium(RiskClass cls) {
         return switch (cls) {
             case A -> new BigDecimal("0.10");

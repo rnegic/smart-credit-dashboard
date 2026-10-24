@@ -10,11 +10,14 @@ import java.math.RoundingMode;
 @Service
 public class DecisionEngine {
 
-    private static final DecisionStatus INADEQUATE_REQUEST_STATUS = DecisionStatus.DECLINED;
-
     public record Decision(DecisionStatus status, BigDecimal finalRate, BigDecimal amount, String reason) {}
 
-    public Decision decide(BigDecimal amount, BigDecimal monthlyRevenue, ScoringService.Result s) {
+    /**
+     * @param legalForm "IP" или "OOO": у ООО есть жёсткий стоп по возрасту компании (шаг 5 ТЗ для ООО).
+     */
+    public Decision decide(BigDecimal amount, BigDecimal monthlyRevenue, ScoringService.Result s, String legalForm) {
+        boolean ooo = ProductRules.isOoo(legalForm);
+
         // УРОВЕНЬ 1
         if (!s.dataComplete())
             return stop(DecisionStatus.INFO_REQUIRED, "Не все данные заявки заполнены.");
@@ -24,18 +27,22 @@ public class DecisionEngine {
             return stop(DecisionStatus.DECLINED, "Долговая нагрузка (DTI) " + s.dtiPercent() + "% выше 70%.");
         if (s.internalScore() < 40)
             return stop(DecisionStatus.DECLINED, "Скоринговый балл " + s.internalScore() + " ниже 40.");
+        // Шаг 5 (только ООО): возраст компании < 1 года - жёсткий стоп
+        if (ooo && s.external().companyAgeYears() < 1)
+            return stop(DecisionStatus.DECLINED, "Возраст компании меньше 1 года (жёсткий стоп для юрлиц).");
         if (s.businessScale() == ProductRules.BusinessScale.OUT_OF_SCOPE)
             return stop(DecisionStatus.DECLINED, "Бизнес не проходит по масштабу (OUT_OF_SCOPE).");
+        // Неадекватный запрос: сумма больше полугодовой выручки -> на ручную проверку
         if (amount.compareTo(monthlyRevenue.multiply(BigDecimal.valueOf(ProductRules.INADEQUATE_REQUEST_REVENUE_MONTHS))) > 0)
-            return stop(INADEQUATE_REQUEST_STATUS, "Запрошенная сумма больше полугодовой выручки.");
+            return stop(DecisionStatus.MANUAL_REVIEW, "Запрошенная сумма больше полугодовой выручки.");
 
-        // УРОВЕНЬ 2
+        // УРОВЕНЬ 2: надбавка за класс риска для ALTERNATIVE_OFFER (A +0.10, B +0.25, C +0.50)
         RiskClass cls = s.riskClass();
-        BigDecimal industryPremium = BigDecimal.valueOf(s.industryRatePremium());
 
-        // Для APPROVED: базовая ставка + отраслевая премия (без премии за класс)
-        BigDecimal approvedRate = s.rate().add(industryPremium).setScale(2, RoundingMode.HALF_UP);
-        // Для ALTERNATIVE: базовая + премия класса + отраслевая
+        // APPROVED: rate + отраслевая надбавка (без надбавки за класс)
+        BigDecimal approvedRate = s.rate().add(BigDecimal.valueOf(s.industryRatePremium()))
+                .setScale(2, RoundingMode.HALF_UP);
+        // ALTERNATIVE_OFFER: rate + надбавка класса + отраслевая надбавка
         BigDecimal alternativeRate = finalRate(s.rate(), cls, s.industryRatePremium());
 
         // УРОВЕНЬ 3
