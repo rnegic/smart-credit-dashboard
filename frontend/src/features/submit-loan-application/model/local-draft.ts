@@ -58,6 +58,16 @@ const draftSchema = z.object({
     })
     .partial()
     .default({}),
+  externalEdits: z
+    .object({
+      bkiScore: z.string(),
+      delinquencies12m: z.string(),
+      inquiries12m: z.string(),
+      revenueTrend: z.string(),
+      companyAgeYears: z.string(),
+    })
+    .partial()
+    .default({}),
   currentStep: z.number().int().min(0).max(4).default(0),
   wizardVersion: z.literal(2).optional(),
   started: z.boolean().default(false),
