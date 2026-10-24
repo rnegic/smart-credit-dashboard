@@ -35,13 +35,19 @@ class ScoringScenariosTest {
 
     private static ApplicationFormDto form(String type, String amount, int termDays, String monthlyRevenue,
                                            String debt, String other, String annualRevenue, Integer employees) {
+        return form(type, amount, termDays, monthlyRevenue, debt, other, annualRevenue, employees, null);
+    }
+
+    private static ApplicationFormDto form(String type, String amount, int termDays, String monthlyRevenue,
+                                           String debt, String other, String annualRevenue, Integer employees,
+                                           ApplicationFormDto.ExternalDataOverride externalData) {
         var s1 = new ApplicationFormDto.Step1("task", bd(amount), termDays, null, "purpose");
         var applicant = new ApplicationFormDto.Applicant(type, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null);
         var fin = new ApplicationFormDto.Financials(bd(monthlyRevenue), bd(debt),
                 annualRevenue == null ? null : bd(annualRevenue), employees, bd(other));
-        return new ApplicationFormDto(null, null, null, s1, new ApplicationFormDto.Step2(applicant, fin),
-                null, null, null);
+        return new ApplicationFormDto(null, null, null, s1,
+                new ApplicationFormDto.Step2(applicant, fin, externalData), null, null, null);
     }
 
     private DecisionEngine.Decision run(String legalForm, String okved, ExternalDataService.ExternalData ext,
@@ -148,6 +154,40 @@ class ScoringScenariosTest {
         assertEquals(bd("24.00"), ProductRules.baseRate("OOO", ProductRules.BusinessScale.MICRO, 90));
         assertEquals(bd("19.00"), ProductRules.baseRate("OOO", ProductRules.BusinessScale.SMALL, 30));
         assertEquals(bd("23.00"), ProductRules.baseRate("OOO", ProductRules.BusinessScale.SMALL, 90));
+    }
+
+    @Test void externalOverrides_replaceOnlyProvidedFields() {
+        Company c = company("IP", "62.01");
+        c.setInn("772567890123");
+        ExternalDataService service = new ExternalDataService();
+        ExternalDataService.ExternalData base = service.fetch(c);
+
+        ExternalDataService.ExternalData resolved = service.fetch(c,
+                new ApplicationFormDto.ExternalDataOverride(900, null, 0, RevenueTrend.GROWING, 20));
+
+        assertEquals(900, resolved.bkiScore());
+        assertEquals(base.delinquencies12m(), resolved.delinquencies12m());
+        assertEquals(0, resolved.inquiries12m());
+        assertEquals(RevenueTrend.GROWING, resolved.revenueTrend());
+        assertEquals(20, resolved.companyAgeYears());
+    }
+
+    @Test void scoringAndDecision_useExternalOverrides() {
+        var overrides = new ApplicationFormDto.ExternalDataOverride(900, 2, 0, RevenueTrend.GROWING, 10);
+        var f = form("IP", "50000", 30, "200000", "60000", "0", null, null, overrides);
+        ScoringService.Result r = new ScoringService(new ExternalDataService())
+                .score(company("IP", "62.01"), f);
+        var d = engine.decide(f.step1().amount(), f.step2().financials().monthlyRevenue(), r, "IP");
+
+        assertEquals(900, r.external().bkiScore());
+        assertEquals(2, r.external().delinquencies12m());
+        assertEquals(RevenueTrend.GROWING, r.external().revenueTrend());
+        assertEquals(10, r.external().companyAgeYears());
+        assertEquals(0, r.points().get("delinquencies12m"));
+        assertEquals(20, r.points().get("bkiScore"));
+        assertEquals(15, r.points().get("revenueTrend"));
+        assertEquals(DecisionStatus.DECLINED, d.status());
+        assertTrue(d.reason().contains("12"));
     }
 
     // ---------------- общие формулы ----------------
