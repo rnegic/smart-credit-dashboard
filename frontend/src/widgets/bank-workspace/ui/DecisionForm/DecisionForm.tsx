@@ -6,7 +6,13 @@ import { Textarea } from '@alfalab/core-components/textarea'
 import { ArrowsRightLeftMIcon } from '@alfalab/icons/glyph/dist/ArrowsRightLeftMIcon'
 import { CheckmarkMIcon } from '@alfalab/icons/glyph/dist/CheckmarkMIcon'
 import { CrossMIcon } from '@alfalab/icons/glyph/dist/CrossMIcon'
-import type { BankApplicationView } from '@/entities/loan-application'
+import { MagicWandMIcon } from '@alfalab/icons/glyph/dist/MagicWandMIcon'
+import { useMutation } from '@tanstack/react-query'
+import {
+  commentSuggestionSchema,
+  type BankApplicationView,
+} from '@/entities/loan-application'
+import { apiRequest } from '@/shared/api'
 import { formatMoney } from '@/shared/lib'
 import { decisionSchema, type Decision } from '../../model/decision'
 import styles from './DecisionForm.module.scss'
@@ -40,6 +46,13 @@ const termOptions = [30, 60, 90].map((days) => ({
 
 type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'finalRate'
 
+type SuggestionBody = {
+  action: 'APPROVE' | 'OFFER_ALTERNATIVE' | 'DECLINE'
+  amount?: number
+  termDays?: 30 | 60 | 90
+  finalRate?: number
+}
+
 /** Validates manual decisions without calculating offer terms in the browser. */
 export function DecisionForm({
   application,
@@ -65,6 +78,45 @@ export function DecisionForm({
     setValues((current) => ({ ...current, [field]: value }))
     setErrors((current) => ({ ...current, [field]: undefined }))
   }
+
+  function parseNumber(value: string): number | null {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number(trimmed.replace(/\s/g, '').replace(',', '.'))
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  function buildSuggestionBody(): SuggestionBody | null {
+    if (!action) return null
+    const body: SuggestionBody = { action }
+    if (action === 'OFFER_ALTERNATIVE') {
+      const amount = parseNumber(values.amount)
+      if (amount !== null && amount >= 50_000 && amount <= 20_000_000)
+        body.amount = amount
+      if (
+        values.termDays === '30' ||
+        values.termDays === '60' ||
+        values.termDays === '90'
+      )
+        body.termDays = Number(values.termDays) as 30 | 60 | 90
+      const rate = parseNumber(values.finalRate)
+      if (rate !== null && rate >= 0 && rate <= 100) body.finalRate = rate
+    }
+    return body
+  }
+
+  const generate = useMutation({
+    mutationFn: async () => {
+      const body = buildSuggestionBody()
+      if (!body) throw new Error('Выберите решение')
+      return apiRequest(
+        `/api/bank/applications/${application.id}/comment-suggestion`,
+        commentSuggestionSchema,
+        { method: 'POST', body: JSON.stringify(body) },
+      )
+    },
+    onSuccess: (result) => changeField('comment', result.comment),
+  })
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -128,6 +180,7 @@ export function DecisionForm({
                 onChange={() => {
                   setAction(option.value)
                   setErrors({})
+                  generate.reset()
                 }}
               />
               <option.Icon
@@ -265,6 +318,33 @@ export function DecisionForm({
       )}
 
       <div className={styles.confirmation}>
+        <div className={styles.commentActions}>
+          <Button
+            type="button"
+            view="secondary"
+            size={40}
+            leftAddons={<MagicWandMIcon aria-hidden="true" focusable="false" />}
+            loading={generate.isPending}
+            disabled={!action || disabled || pending || generate.isPending}
+            onClick={() => generate.mutate()}
+          >
+            {generate.isPending
+              ? 'Генерируем…'
+              : values.comment.trim()
+                ? 'Сгенерировать заново'
+                : 'Сгенерировать комментарий с ИИ'}
+          </Button>
+          {!action && (
+            <span className={styles.note}>Сначала выберите решение</span>
+          )}
+        </div>
+        {generate.isError && (
+          <p className={styles.error} role="alert">
+            {generate.error instanceof Error
+              ? generate.error.message
+              : 'Не удалось сгенерировать комментарий'}
+          </p>
+        )}
         <Textarea
           name="comment"
           aria-label="Комментарий к решению"

@@ -177,3 +177,9 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+.commentActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-8);
+}
