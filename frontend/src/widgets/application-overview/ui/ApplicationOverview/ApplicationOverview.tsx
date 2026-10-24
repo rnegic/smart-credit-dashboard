@@ -362,10 +362,16 @@ export function ApplicationOverview({
             ? 'Загружаем комментарий кредитного специалиста…'
             : 'Комментарий кредитного специалиста пока не указан.',
     },
-    ACCEPTED: {
+      ACCEPTED: {
       title: 'Условия приняты',
       description: 'Ожидаем подтверждения выдачи. Деньги ещё не зачислены.',
     },
+    SIGNATURE_PENDING: {
+      title: 'Условия приняты, ожидается подписание',
+      description:
+        'Предложение принято. Ознакомьтесь с документами и подпишите их, после этого банк оформит кредит.',
+    },
+  }[application.status]
   }[application.status]
   const offerState =
     !providedApplication && applications.isError
