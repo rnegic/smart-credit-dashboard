@@ -7,6 +7,20 @@ const optionalNumberSchema = z.number().nullable()
 const requiredText = (message: string) =>
   z.string({ error: message }).trim().min(1, message)
 
+export const revenueTrendSchema = z.enum([
+  'GROWING',
+  'STABLE',
+  'DECLINING',
+])
+
+export const externalDataSchema = z.object({
+  bkiScore: z.number().int().min(0).max(1_000).nullable(),
+  delinquencies12m: z.number().int().min(0).max(24).nullable(),
+  inquiries12m: z.number().int().min(0).max(30).nullable(),
+  revenueTrend: revenueTrendSchema.nullable(),
+  companyAgeYears: z.number().int().min(0).max(100).nullable(),
+})
+
 export const applicationApplicantSchema = z.object({
   type: optionalTextSchema,
   companyName: optionalTextSchema,
@@ -46,6 +60,7 @@ export const applicationFormSchema = z.object({
       averageEmployeeCount: z.number().int().nullable().optional(),
       otherMonthlyObligations: optionalNumberSchema.optional(),
     }),
+    externalData: externalDataSchema.nullish(),
   }),
   prefilled: z
     .object({
@@ -96,6 +111,7 @@ export const applicationBusinessSummarySchema = z
           applicationFormSchema.shape.step2_businessData.shape.financials
             .partial()
             .nullish(),
+        externalData: externalDataSchema.nullish(),
       })
       .nullish(),
   })
@@ -131,12 +147,9 @@ export const applicationApplicantSubmissionSchema =
     ),
     industry: requiredText('Выберите группу отраслей'),
     registrationAddress: requiredText('Укажите адрес регистрации'),
-    phone: requiredText('Укажите телефон').refine(
-      (value) =>
-        /^\+?[\d\s()-]+$/.test(value) &&
-        value.replace(/\D/g, '').length >= 10 &&
-        value.replace(/\D/g, '').length <= 15,
-      'Укажите телефон: от 10 до 15 цифр',
+    phone: requiredText('Укажите телефон').regex(
+      /^\+7[\s()-]*(?:\d[\s()-]*){10}$/,
+      'Укажите российский номер в формате +7XXXXXXXXXX',
     ),
     email: requiredText('Укажите email').pipe(
       z.email({ error: 'Укажите корректный email' }),
@@ -215,10 +228,12 @@ export const applicationFormSubmissionSchema = applicationFormSchema.extend({
     z.object({
       applicant: applicationApplicantSubmissionSchema,
       financials: financialsSubmissionSchema,
+      externalData: externalDataSchema.nullable(),
     }),
     z.object({
       applicant: oooApplicantSubmissionSchema,
       financials: oooFinancialsSubmissionSchema,
+      externalData: externalDataSchema.nullable(),
     }),
   ]),
   step3_verification: z.object({
@@ -241,6 +256,8 @@ export type ApplicationForm = z.infer<typeof applicationFormSchema>
 export type ApplicationFormSubmission = z.infer<
   typeof applicationFormSubmissionSchema
 >
+export type ExternalData = z.infer<typeof externalDataSchema>
+export type RevenueTrend = z.infer<typeof revenueTrendSchema>
 export type PrefillResponse = z.infer<typeof prefillResponseSchema>
 
 /** Drop obsolete annotations from persisted drafts without converting values. */

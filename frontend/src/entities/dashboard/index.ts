@@ -13,6 +13,15 @@ export const dashboardSchema = z.object({
     inn: z.string(),
     okved: z.string().nullable(),
     legalForm: z.string().nullable(),
+    externalDemo: z
+      .object({
+        bkiScore: z.number().int(),
+        delinquencies12m: z.number().int(),
+        inquiries12m: z.number().int(),
+        revenueTrend: z.enum(['GROWING', 'STABLE', 'DECLINING']),
+        companyAgeYears: z.number().int(),
+      })
+      .nullish(),
   }),
   currentApplication: z
     .object({
