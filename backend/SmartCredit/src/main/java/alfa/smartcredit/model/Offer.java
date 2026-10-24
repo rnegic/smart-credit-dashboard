@@ -5,8 +5,12 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
@@ -27,4 +31,12 @@ public class Offer {
     @Column(name = "monthly_payment") private BigDecimal monthlyPayment;
     @Column(name = "valid_until") private LocalDate validUntil;
     @Enumerated(EnumType.STRING) private OfferStatus status;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    private JsonNode documents;
+
+    @Column(name = "document_version") private String documentVersion;
+    @Column(name = "signed_at") private Instant signedAt;
+    @Column(name = "signed_by_id") private Long signedById;
+    @Column(name = "signed_by_full_name") private String signedByFullName;
 }

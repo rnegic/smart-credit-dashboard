@@ -1,22 +1,17 @@
 package alfa.smartcredit.service;
 
-import alfa.smartcredit.dto.ApplicationFormDto;
-import alfa.smartcredit.dto.ApplicationView;
-import alfa.smartcredit.dto.CommentSuggestionRequest;
-import alfa.smartcredit.dto.DecisionRequest;
+import alfa.smartcredit.dto.*;
 import alfa.smartcredit.event.ApplicationStatusChangedEvent;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
 import alfa.smartcredit.model.CreditApplication;
 import alfa.smartcredit.model.Offer;
+import alfa.smartcredit.model.User;
 import alfa.smartcredit.model.enums.ApplicationStatus;
 import alfa.smartcredit.model.enums.DecisionStatus;
 import alfa.smartcredit.model.enums.RiskClass;
 import alfa.smartcredit.model.enums.OfferStatus;
-import alfa.smartcredit.repository.ApplicationDraftRepository;
-import alfa.smartcredit.repository.CompanyRepository;
-import alfa.smartcredit.repository.CreditApplicationRepository;
-import alfa.smartcredit.repository.OfferRepository;
+import alfa.smartcredit.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
@@ -27,9 +22,11 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -48,6 +45,8 @@ public class ApplicationService {
     private final AiCommentService aiCommentService;
     private final ObjectMapper mapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final DocumentService documentService;
+    private final UserRepository userRepository;
 
     @Transactional
     public void setLegalForm(Long companyId, String legalForm) {
@@ -210,22 +209,114 @@ public class ApplicationService {
     }
 
     @Transactional
-    public void signOffer(Long companyId, Long offerId) {
-        Offer o = offerRepository.findById(offerId).orElseThrow(() -> ApiException.notFound("Предложение не найдено"));
+    public ApplicationView acceptOffer(Long companyId, Long offerId) {
+        Offer o = offerRepository.findById(offerId)
+                .orElseThrow(() -> ApiException.notFound("Предложение не найдено"));
         if (!o.getCompanyId().equals(companyId)) throw ApiException.forbidden();
+        Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
+        CreditApplication a = find(o.getApplicationId());
+
+        // идемпотентно: уже принято / уже подписано
+        if (a.getStatus() == ApplicationStatus.SIGNATURE_PENDING && o.getStatus() == OfferStatus.ACCEPTED)
+            return toView(a, company, false);
+        if (a.getStatus() == ApplicationStatus.ACCEPTED)
+            return toView(a, company, false);
+
+        if (a.getStatus() != ApplicationStatus.OFFER_READY)
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STAGE",
+                    "Принятие предложения доступно только на этапе предложения");
         if (o.getStatus() != OfferStatus.ACTIVE)
             throw new ApiException(HttpStatus.CONFLICT, "OFFER_NOT_ACTIVE", "Предложение уже неактуально");
-        o.setStatus(OfferStatus.ACCEPTED);
-        find(o.getApplicationId()).setStatus(ApplicationStatus.ACCEPTED);
-        // TODO: здесь же можно создать Loan + график платежей
+        if (o.getValidUntil() == null || o.getValidUntil().isBefore(LocalDate.now()))
+            throw new ApiException(HttpStatus.CONFLICT, "OFFER_EXPIRED", "Срок действия предложения истёк");
 
+        List<DocumentDto> docs = documentService.buildDocuments(company, a, o);
+        o.setDocuments(mapper.valueToTree(docs));
+        o.setDocumentVersion("1");
         o.setStatus(OfferStatus.ACCEPTED);
-        CreditApplication app = find(o.getApplicationId());
-        app.setStatus(ApplicationStatus.ACCEPTED);
+        a.setStatus(ApplicationStatus.SIGNATURE_PENDING);
 
         eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
-                app.getCompanyId(), app.getId(), ApplicationStatus.ACCEPTED.name(),
-                String.format("Вы подписали предложение по заявке №%d. Кредит будет оформлен.", app.getId())));
+                companyId, a.getId(), ApplicationStatus.SIGNATURE_PENDING.name(),
+                String.format("Предложение по заявке №%d принято. Подпишите документы.", a.getId())));
+
+        return toView(a, company, false);
+    }
+
+    @Transactional(readOnly = true)
+    public DocumentsResponse getDocuments(Long companyId, Long applicationId) {
+        CreditApplication a = find(applicationId);
+        if (!a.getCompanyId().equals(companyId)) throw ApiException.forbidden();
+        Offer o = offerRepository.findFirstByApplicationIdOrderByIdDesc(applicationId).orElse(null);
+        if (o == null) {
+            return new DocumentsResponse(applicationId, null, null,
+                    List.of(), false, null, null, true);
+        }
+        return toDocumentsResponse(a, o);
+    }
+
+    @Transactional
+    public DocumentsResponse signOffer(Long companyId, Long userId, Long offerId, SignRequest req) {
+        Offer o = offerRepository.findById(offerId)
+                .orElseThrow(() -> ApiException.notFound("Предложение не найдено"));
+        if (!o.getCompanyId().equals(companyId)) throw ApiException.forbidden();
+        CreditApplication a = find(o.getApplicationId());
+        User signer = userRepository.findById(userId).orElseThrow(ApiException::unauthorized);
+
+        // Идемпотентность: повторный запрос возвращает сохранённый результат
+        if (o.getSignedAt() != null) {
+            return toDocumentsResponse(a, o);
+        }
+
+        if (a.getStatus() != ApplicationStatus.SIGNATURE_PENDING)
+            throw new ApiException(HttpStatus.CONFLICT, "INVALID_STAGE",
+                    "Подписание доступно только на этапе подписания документов");
+        if (o.getStatus() != OfferStatus.ACCEPTED)
+            throw new ApiException(HttpStatus.CONFLICT, "OFFER_NOT_ACCEPTED",
+                    "Сначала примите условия предложения");
+        if (o.getValidUntil() == null || o.getValidUntil().isBefore(LocalDate.now()))
+            throw new ApiException(HttpStatus.CONFLICT, "OFFER_EXPIRED", "Срок действия предложения истёк");
+        if (o.getDocuments() == null || !o.getDocuments().isArray() || o.getDocuments().size() == 0)
+            throw new ApiException(HttpStatus.CONFLICT, "NO_DOCUMENTS", "Документы не сформированы");
+        if (!Boolean.TRUE.equals(req.confirmed()))
+            throw new ApiException(HttpStatus.BAD_REQUEST, "NOT_CONFIRMED",
+                    "Необходимо подтвердить ознакомление с документами");
+        if (o.getDocumentVersion() != null && !o.getDocumentVersion().equals(req.documentVersion()))
+            throw new ApiException(HttpStatus.CONFLICT, "DOCUMENT_VERSION_MISMATCH",
+                    "Версия документов устарела, обновите страницу");
+
+        o.setSignedAt(Instant.now());
+        o.setSignedById(signer.getId());
+        o.setSignedByFullName(signer.getFullName());
+        a.setStatus(ApplicationStatus.ACCEPTED);
+
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                companyId, a.getId(), ApplicationStatus.ACCEPTED.name(),
+                String.format("Документы по заявке №%d подписаны. Кредит будет оформлен.", a.getId())));
+
+        return toDocumentsResponse(a, o);
+    }
+
+    private DocumentsResponse toDocumentsResponse(CreditApplication a, Offer o) {
+        List<DocumentDto> docs = new ArrayList<>();
+        if (o.getDocuments() != null && o.getDocuments().isArray()) {
+            for (JsonNode n : o.getDocuments()) {
+                docs.add(new DocumentDto(
+                        n.path("type").asText(),
+                        n.path("title").asText(),
+                        n.path("content").asText()));
+            }
+        }
+        boolean signingAllowed = o.getSignedAt() == null
+                && a.getStatus() == ApplicationStatus.SIGNATURE_PENDING
+                && o.getStatus() == OfferStatus.ACCEPTED
+                && o.getValidUntil() != null && !o.getValidUntil().isBefore(LocalDate.now())
+                && !docs.isEmpty();
+        DocumentsResponse.Signer signedBy = o.getSignedAt() != null && o.getSignedById() != null
+                ? new DocumentsResponse.Signer(o.getSignedById(), o.getSignedByFullName())
+                : null;
+        return new DocumentsResponse(a.getId(), o.getId(), o.getDocumentVersion(),
+                docs, signingAllowed, o.getSignedAt(), signedBy, true);
     }
 
     // ---------- helpers ----------

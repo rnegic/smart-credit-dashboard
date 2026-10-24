@@ -76,15 +76,17 @@ public class DashboardService {
     private List<DashboardResponse.StageDto> buildStages(CreditApplication app) {
         String[][] defs = {
                 {"SUBMITTED", "Заявка подана"},
-                {"REVIEW", "Рассмотрение банком"},
-                {"OFFER", "Предложение банка"},
-                {"ISSUED", "Выдача кредита"}
+                {"REVIEW",    "Рассмотрение банком"},
+                {"OFFER",     "Предложение банка"},
+                {"SIGNING",   "Подписание документов"},
+                {"ISSUED",    "Выдача кредита"}
         };
         int current = app == null ? 0 : switch (app.getStatus()) {
-            case IN_REVIEW -> 1;
-            case OFFER_READY -> 2;
-            case DECLINED -> 2;
-            case ACCEPTED -> 4;   // все этапы пройдены
+            case IN_REVIEW         -> 1;
+            case OFFER_READY       -> 2;
+            case SIGNATURE_PENDING -> 3;
+            case DECLINED          -> 2;
+            case ACCEPTED          -> 5;   // все этапы пройдены
         };
         List<DashboardResponse.StageDto> result = new ArrayList<>();
         for (int i = 0; i < defs.length; i++) {
@@ -99,8 +101,12 @@ public class DashboardService {
             return List.of(new DashboardResponse.ActionDto("CREATE_APPLICATION", "Подать заявку на кредит"));
         }
         if (app.getStatus() == ApplicationStatus.OFFER_READY) {
-            return List.of(new DashboardResponse.ActionDto("ACCEPT_OFFER", "Принять или отклонить предложение банка"));
+            return List.of(new DashboardResponse.ActionDto("ACCEPT_OFFER", "Принять условия предложения"));
+        }
+        if (app.getStatus() == ApplicationStatus.SIGNATURE_PENDING) {
+            return List.of(new DashboardResponse.ActionDto("SIGN_DOCUMENTS", "Подписать документы"));
         }
         return List.of();
     }
+
 }

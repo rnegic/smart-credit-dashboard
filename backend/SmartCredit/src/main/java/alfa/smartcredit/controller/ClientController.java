@@ -1,8 +1,6 @@
 package alfa.smartcredit.controller;
 
-import alfa.smartcredit.dto.ApplicationFormDto;
-import alfa.smartcredit.dto.ApplicationView;
-import alfa.smartcredit.dto.LegalFormRequest;
+import alfa.smartcredit.dto.*;
 import alfa.smartcredit.service.ApplicationService;
 import alfa.smartcredit.service.ProfileService;
 import alfa.smartcredit.service.SessionContext;
@@ -45,9 +43,22 @@ public class ClientController {
         return applicationService.forCompany(sessionContext.requireCompanyId(request));
     }
 
+    @PostMapping("/offers/{id}/accept")
+    public ApplicationView accept(@PathVariable Long id, HttpServletRequest request) {
+        return applicationService.acceptOffer(sessionContext.requireCompanyId(request), id);
+    }
+
+    @GetMapping("/applications/{id}/documents")
+    public DocumentsResponse documents(@PathVariable Long id, HttpServletRequest request) {
+        return applicationService.getDocuments(sessionContext.requireCompanyId(request), id);
+    }
+
     @PostMapping("/offers/{id}/sign")
-    public ResponseEntity<Void> sign(@PathVariable Long id, HttpServletRequest request) {
-        applicationService.signOffer(sessionContext.requireCompanyId(request), id);
-        return ResponseEntity.noContent().build();
+    public DocumentsResponse sign(@PathVariable Long id,
+                                  @Valid @RequestBody SignRequest body,
+                                  HttpServletRequest request) {
+        var user = sessionContext.requireUser(request);
+        return applicationService.signOffer(
+                sessionContext.requireCompanyId(request), user.getId(), id, body);
     }
 }
