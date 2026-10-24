@@ -34,6 +34,7 @@ import {
   useApplicationDraft,
   type ApplicationDraft,
   type ApplicationForm,
+  type ExternalData,
   type PrefillResponse,
 } from '@/entities/application-form'
 import { useDashboard } from '@/entities/dashboard'
@@ -59,6 +60,10 @@ import {
   OooApplicationFields,
   type OooApplicationData,
 } from '../OooApplicationFields'
+import {
+  ExternalDataFields,
+  type ExternalDataDraft,
+} from '../ExternalDataFields'
 import { ApplicationPreparation } from '../ApplicationPreparation'
 import { useApplicationPrefill } from '../../model/use-application-prefill'
 import {
@@ -191,6 +196,81 @@ function applicantFields(
     industry:
       getIndustryGroup(applicant.mainOkved)?.key ?? applicant.industry ?? '',
   }
+}
+
+function externalDataFields(
+  responseForm: ApplicationForm,
+): Partial<ExternalDataDraft> {
+  const external = responseForm.step2_businessData.externalData
+  if (!external) return {}
+  return {
+    bkiScore: inputValue(external.bkiScore),
+    delinquencies12m: inputValue(external.delinquencies12m),
+    inquiries12m: inputValue(external.inquiries12m),
+    revenueTrend: external.revenueTrend ?? '',
+    companyAgeYears: inputValue(external.companyAgeYears),
+  }
+}
+
+function externalDataValue(
+  edits: Partial<ExternalDataDraft>,
+): ExternalData | null {
+  const data: ExternalData = {
+    bkiScore: numberOrNull(edits.bkiScore ?? ''),
+    delinquencies12m: numberOrNull(edits.delinquencies12m ?? ''),
+    inquiries12m: numberOrNull(edits.inquiries12m ?? ''),
+    revenueTrend:
+      edits.revenueTrend === 'GROWING' ||
+      edits.revenueTrend === 'STABLE' ||
+      edits.revenueTrend === 'DECLINING'
+        ? edits.revenueTrend
+        : null,
+    companyAgeYears: numberOrNull(edits.companyAgeYears ?? ''),
+  }
+  return Object.values(data).some((value) => value !== null) ? data : null
+}
+
+const externalNumberFields = [
+  {
+    name: 'bkiScore',
+    min: 0,
+    max: 1_000,
+    message: 'Укажите целое число от 0 до 1 000',
+  },
+  {
+    name: 'delinquencies12m',
+    min: 0,
+    max: 24,
+    message: 'Укажите целое число от 0 до 24',
+  },
+  {
+    name: 'inquiries12m',
+    min: 0,
+    max: 30,
+    message: 'Укажите целое число от 0 до 30',
+  },
+  {
+    name: 'companyAgeYears',
+    min: 0,
+    max: 100,
+    message: 'Укажите целое число от 0 до 100',
+  },
+] as const
+
+function externalDataErrors(edits: Partial<ExternalDataDraft>) {
+  const fieldErrors: Record<string, string> = {}
+  for (const field of externalNumberFields) {
+    const raw = edits[field.name]?.trim()
+    if (!raw) continue
+    const number = Number(raw.replace(/\s/g, '').replace(',', '.'))
+    if (
+      !Number.isInteger(number) ||
+      number < field.min ||
+      number > field.max
+    )
+      fieldErrors[field.name] = field.message
+  }
+  return fieldErrors
 }
 
 export function ApplicationForm(props: ApplicationFormProps) {
@@ -346,6 +426,15 @@ function ApplicationFormEditor({
   const [needsDebtReview, setNeedsDebtReview] = useState(
     localDraft?.needsDebtReview ?? needsFinancingReview,
   )
+  const [externalEdits, setExternalEdits] = useState<
+    Partial<ExternalDataDraft>
+  >(() => {
+    const source = localDraft?.serverForm ?? initialDraft?.form
+    return {
+      ...(source ? externalDataFields(source) : {}),
+      ...localDraft?.externalEdits,
+    }
+  })
   const ipData: IpApplicationData = {
     legalForm: 'ИП',
     taxSystem: '',
@@ -470,6 +559,71 @@ function ApplicationFormEditor({
     )
   }
 
+  function updateExternalData(patch: Partial<ExternalDataDraft>) {
+    const next = { ...externalEdits, ...patch }
+    setExternalEdits(next)
+    setErrors((previous) => {
+      const hadExternalError = Object.keys(
+        externalDataErrors(externalEdits),
+      ).some((key) => previous[key])
+      const nextErrors = Object.fromEntries(
+        Object.entries(previous).filter(
+          ([key]) => !(key in patch) && key !== 'submission',
+        ),
+      )
+      if (hadExternalError) {
+        for (const [key, message] of Object.entries(
+          externalDataErrors(next),
+        ))
+          nextErrors[key] = message
+      }
+      return nextErrors
+    })
+  }
+
+  function validateExternalField(field: keyof ExternalDataDraft) {
+    const message = externalDataErrors(externalEdits)[field]
+    setErrors((previous) => {
+      const next = { ...previous }
+      if (message) next[field] = message
+      else delete next[field]
+      return next
+    })
+  }
+
+  function validateIpField(field: keyof IpApplicationData) {
+    const registrationFields = [
+      'ogrnip',
+      'okved',
+      'registrationAddress',
+      'phone',
+      'email',
+      'fullName',
+    ]
+    if (!registrationFields.includes(field)) return
+    const result = registrationSchema.safeParse(
+      buildSubmission().step2_businessData.applicant,
+    )
+    const issue =
+      result.success
+        ? undefined
+        : result.error.issues.find((item) => {
+            const name = String(item.path.at(-1))
+            return (
+              name === field ||
+              (field === 'fullName' &&
+                (name === 'firstName' || name === 'lastName')) ||
+              (field === 'okved' && name === 'mainOkved')
+            )
+          })
+    setErrors((previous) => {
+      const next = { ...previous }
+      if (issue) next[field] = issue.message
+      else delete next[field]
+      return next
+    })
+  }
+
   function openCompanyPanel(trigger: HTMLButtonElement) {
     companyPanelTriggerRef.current = trigger
     setCompanyPanelOpen(true)
@@ -482,6 +636,7 @@ function ApplicationFormEditor({
     setForm({ ...financingFields(responseForm), description })
     setIpEdits(applicantFields(responseForm))
     setOooEdits(applicantFields(responseForm))
+    setExternalEdits(externalDataFields(responseForm))
     setIpConfirmed(responseForm.prefilled?.confirmedByUser ?? false)
     setNeedsDebtReview(false)
     setAcceptedAt(consents.acceptedAt)
@@ -557,6 +712,7 @@ function ApplicationFormEditor({
               }
             : {}),
         },
+        externalData: externalDataValue(externalEdits),
       },
       prefilled: {
         source: serverForm?.prefilled?.source ?? 'PROFILE',
@@ -598,6 +754,7 @@ function ApplicationFormEditor({
           ...form,
           ipEdits,
           oooEdits,
+          externalEdits,
           wizardVersion: 2,
           currentStep: step,
           started,
@@ -620,6 +777,7 @@ function ApplicationFormEditor({
     form,
     ipEdits,
     oooEdits,
+    externalEdits,
     step,
     started,
     serverForm,
@@ -640,6 +798,7 @@ function ApplicationFormEditor({
     setForm(emptyDraft)
     setIpEdits({})
     setOooEdits({})
+    setExternalEdits({})
     setIpConfirmed(false)
     setNeedsDebtReview(false)
     setAcceptedAt(null)
@@ -995,6 +1154,14 @@ function ApplicationFormEditor({
           else focusInvalidField(Object.keys(fieldErrors)[0])
           return
         }
+      }
+    }
+    if (step === 1 || step === steps.length - 1) {
+      const externalErrors = externalDataErrors(externalEdits)
+      if (Object.keys(externalErrors).length) {
+        setErrors(externalErrors)
+        focusInvalidField(Object.keys(externalErrors)[0])
+        return
       }
     }
     setErrors({})
@@ -1565,20 +1732,30 @@ function ApplicationFormEditor({
               </>
             )}
             {step === 1 && isIp && (
-              <IpApplicationFields
-                section="business"
-                value={ipData}
-                onChange={updateIpData}
-                aiFilled={aiFilled}
-                missingFields={missingFields}
-                errors={errors}
-              />
+              <>
+                <IpApplicationFields
+                  section="business"
+                  value={ipData}
+                  onChange={updateIpData}
+                  aiFilled={aiFilled}
+                  missingFields={missingFields}
+                  errors={errors}
+                />
+                <ExternalDataFields
+                  value={externalEdits}
+                  onChange={updateExternalData}
+                  onBlur={validateExternalField}
+                  demo={company?.externalDemo}
+                  errors={errors}
+                />
+              </>
             )}
             {step === 2 && isIp && (
               <IpApplicationFields
                 section="registration"
                 value={ipData}
                 onChange={updateIpData}
+                onBlur={validateIpField}
                 profileMatches={ipData.inn === company?.inn}
                 confirmed={ipConfirmed}
                 onConfirm={() => setIpConfirmed(true)}
@@ -1589,7 +1766,16 @@ function ApplicationFormEditor({
               />
             )}
             {step === 1 && isOoo && (
-              <OooApplicationFields section="business" {...oooFieldProps} />
+              <>
+                <OooApplicationFields section="business" {...oooFieldProps} />
+                <ExternalDataFields
+                  value={externalEdits}
+                  onChange={updateExternalData}
+                  onBlur={validateExternalField}
+                  demo={company?.externalDemo}
+                  errors={errors}
+                />
+              </>
             )}
             {step === 2 && isOoo && (
               <>
@@ -1725,6 +1911,7 @@ function ApplicationFormEditor({
                       section="registration"
                       value={ipData}
                       onChange={updateIpData}
+                      onBlur={validateIpField}
                       onEditProfile={openCompanyPanel}
                       aiFilled={aiFilled}
                       missingFields={missingFields}

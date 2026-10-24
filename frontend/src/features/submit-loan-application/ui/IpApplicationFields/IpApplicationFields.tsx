@@ -37,6 +37,7 @@ export interface IpApplicationFieldsProps {
   section: 'business' | 'registration'
   value: IpApplicationData
   onChange: (patch: Partial<IpApplicationData>) => void
+  onBlur?: (field: keyof IpApplicationData) => void
   profileMatches?: boolean
   confirmed?: boolean
   onConfirm?: () => void
@@ -168,6 +169,7 @@ export function IpApplicationFields({
   section,
   value,
   onChange,
+  onBlur,
   profileMatches,
   confirmed,
   onConfirm,
@@ -302,6 +304,7 @@ export function IpApplicationFields({
                       : { [field.name]: next },
                   )
                 }
+                onBlur={() => onBlur?.(field.name)}
               />
               {hasAiPath(aiFilled, field.name) && (
                 <p className={styles.aiNote}>
