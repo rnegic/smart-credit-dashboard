@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@alfalab/core-components/button'
 import {
   useApplications,
+  getApplicationPurposeLabel,
   type Application,
   type ApplicationView,
   type Offer,
@@ -382,7 +383,7 @@ export function AcceptOffer({
                 Ожидаем подтверждения выдачи. Деньги ещё не зачислены
               </p>
             ) : (
-              <p>Цель: {application.purpose || 'Не указана'}</p>
+              <p>Цель: {getApplicationPurposeLabel(application.purpose)}</p>
             )}
           </div>
           {notice && !accepted && (
