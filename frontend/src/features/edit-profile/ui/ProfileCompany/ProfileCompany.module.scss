@@ -1,0 +1,19 @@
+.form {
+  display: grid;
+  gap: var(--gap-16);
+  min-inline-size: 0;
+}
+
+.title,
+.hint,
+.status {
+  margin: var(--gap-0);
+}
+
+.hint {
+  color: var(--color-light-text-secondary);
+}
+
+.status {
+  min-block-size: var(--gap-24);
+}
