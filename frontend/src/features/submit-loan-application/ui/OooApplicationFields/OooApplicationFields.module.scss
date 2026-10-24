@@ -16,8 +16,7 @@
 .wide {
   grid-column: 1 / -1;
 }
-.title,
-.notice h3 {
+.title {
   margin: var(--gap-0);
   font: 600 var(--gap-20) / 1.4 var(--font-family-system);
 }
@@ -36,6 +35,10 @@
 .consents {
   display: grid;
   gap: var(--gap-12);
+}
+.check,
+.confirmed {
+  color: var(--color-light-status-positive);
 }
 .body .aiNote {
   color: var(--color-light-text-info);

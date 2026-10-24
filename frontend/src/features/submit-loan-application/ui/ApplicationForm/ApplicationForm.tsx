@@ -22,6 +22,7 @@ import {
   applicationViewSchema,
   applicationPurposeLabels,
   createApplicationSchema,
+  getApplicationPurposeLabel,
 } from '@/entities/loan-application'
 import {
   applicationApplicantSubmissionSchema,
@@ -105,7 +106,6 @@ const oooFormSteps = [
   'Параметры финансирования',
   'ООО и финансы',
   'Проверка организации',
-  'Документы и согласия',
   'Проверка и отправка',
 ]
 const ipFormSteps = [
@@ -286,6 +286,7 @@ function ApplicationFormEditor({
   const discardButtonRef = useRef<HTMLButtonElement>(null)
   const submitting = useRef(false)
   const saving = useRef(false)
+  const resetAfterClose = useRef(false)
   const savedSnapshot = useRef(
     initialDraft
       ? JSON.stringify({
@@ -506,7 +507,9 @@ function ApplicationFormEditor({
       step1_financingParameters: {
         businessTask:
           nullableText(form.description) ??
-          (isOoo ? null : nullableText(form.purpose)),
+          (form.purpose.trim()
+            ? getApplicationPurposeLabel(form.purpose.trim())
+            : null),
         amount: numberOrNull(form.amount),
         termDays: numberOrNull(form.termDays),
         purpose: nullableText(form.purpose),
@@ -563,9 +566,9 @@ function ApplicationFormEditor({
             ...meta,
             events: [
               ...(meta.events ?? []).filter(
-                (event) => !/^ooo_step_[0-4]$/.test(event),
+                (event) => !/^ooo_step_(?:[0-4]|v2_[0-3])$/.test(event),
               ),
-              `ooo_step_${currentStep}`,
+              `ooo_step_v2_${currentStep}`,
             ],
           }
         : meta,
@@ -573,6 +576,7 @@ function ApplicationFormEditor({
   }
 
   useEffect(() => {
+    if (resetAfterClose.current) return
     try {
       if (!started && !Object.values(form).some(Boolean)) {
         sessionStorage.removeItem(storageKey)
@@ -584,6 +588,7 @@ function ApplicationFormEditor({
           ...form,
           ipEdits,
           oooEdits,
+          wizardVersion: 2,
           currentStep: step,
           started,
           serverForm,
@@ -620,6 +625,25 @@ function ApplicationFormEditor({
   useEffect(() => {
     if (open) stepHeadingRef.current?.focus()
   }, [step, open])
+
+  function resetForm() {
+    setForm(emptyDraft)
+    setIpEdits({})
+    setOooEdits({})
+    setIpConfirmed(false)
+    setNeedsDebtReview(false)
+    setAcceptedAt(null)
+    setRevision(null)
+    setServerForm(null)
+    setStarted(false)
+    setStep(0)
+    setAiFilled(new Set())
+    setMissingFields(new Set())
+    setErrors({})
+    setPrefillMessage('')
+    setDraftCreatedAt(new Date().toISOString())
+    savedSnapshot.current = ''
+  }
 
   const saveDraft = useMutation({
     mutationFn: async (snapshot: {
@@ -686,23 +710,8 @@ function ApplicationFormEditor({
     mutationFn: () => apiEmpty('/api/applications/draft', { method: 'DELETE' }),
     onSuccess: () => {
       cache.setQueryData(draftKey, null)
-      setForm(emptyDraft)
-      setIpEdits({})
-      setOooEdits({})
-      setIpConfirmed(false)
-      setNeedsDebtReview(false)
-      setAcceptedAt(null)
-      setRevision(null)
-      setServerForm(null)
-      setStarted(false)
-      setStep(0)
-      setAiFilled(new Set())
-      setMissingFields(new Set())
-      setErrors({})
+      resetForm()
       setConfirmDiscard(false)
-      setPrefillMessage('')
-      setDraftCreatedAt(new Date().toISOString())
-      savedSnapshot.current = ''
       try {
         sessionStorage.removeItem(storageKey)
       } catch {
@@ -754,32 +763,22 @@ function ApplicationFormEditor({
     },
     onSuccess: async (_, { generation }) => {
       if (!isCurrentSession(cache, scope, generation)) return
+      resetAfterClose.current = true
+      setOpen(false)
+      setStarted(false)
+      savedSnapshot.current = ''
+      try {
+        sessionStorage.removeItem(storageKey)
+        window.dispatchEvent(new Event('application-draft-changed'))
+      } catch {
+        /* Storage may be unavailable. */
+      }
       await Promise.all([
         cache.cancelQueries({ queryKey: sessionKey, exact: true }),
         cache.cancelQueries({ queryKey: ['client', scope] }),
       ])
       if (!isCurrentSession(cache, scope, generation)) return
-      try {
-        sessionStorage.removeItem(storageKey)
-      } catch {
-        /* Storage may be unavailable. */
-      }
-      setForm(emptyDraft)
-      setIpEdits({})
-      setOooEdits({})
-      setIpConfirmed(false)
-      setNeedsDebtReview(false)
-      setServerForm(null)
-      setAiFilled(new Set())
-      setMissingFields(new Set())
-      setPrefillMessage('')
-      setStarted(false)
-      setAcceptedAt(null)
-      setRevision(null)
-      setStep(0)
-      savedSnapshot.current = ''
       cache.setQueryData(draftKey, null)
-      setOpen(false)
       await Promise.all([
         cache.invalidateQueries({ queryKey: ['client', scope] }),
         cache.invalidateQueries({ queryKey: sessionKey, exact: true }),
@@ -914,13 +913,7 @@ function ApplicationFormEditor({
       return
     }
     const businessTask =
-      form.description.trim() || (isOoo ? '' : result.data.purpose)
-    if (!businessTask) {
-      setErrors({ description: 'Опишите бизнес-задачу' })
-      if (step !== 0) setStep(0)
-      else focusInvalidField('businessTask')
-      return
-    }
+      form.description.trim() || getApplicationPurposeLabel(result.data.purpose)
     if (businessTask.length > 500) {
       setErrors({
         description: 'Бизнес-задача должна быть не длиннее 500 символов',
@@ -981,7 +974,7 @@ function ApplicationFormEditor({
       const sections = [
         { name: 'business', step: 1 },
         { name: 'registration', step: 2 },
-        { name: 'consents', step: 3 },
+        { name: 'consents', step: 2 },
       ] as const
       for (const section of sections) {
         if (step < section.step) continue
@@ -1339,15 +1332,20 @@ function ApplicationFormEditor({
           if (!saveDraft.isPending && !submit.isPending) setOpen(false)
         }}
         wrapperProps={{ 'aria-labelledby': `${id}-title` }}
-        onUnmount={() =>
+        onUnmount={() => {
+          if (resetAfterClose.current) {
+            resetAfterClose.current = false
+            resetForm()
+            return
+          }
           requestAnimationFrame(() => {
             if (
               returnFocusRef.current?.isConnected &&
               !document.querySelector('[role="dialog"]')
             )
-              returnFocusRef.current.focus()
+              returnFocusRef.current.focus({ preventScroll: true })
           })
-        }
+        }}
       >
         <Modal.Header
           sticky
@@ -1386,9 +1384,11 @@ function ApplicationFormEditor({
               {steps[step]}
             </h2>
             <p>
-              {isOoo
-                ? 'Заполните обязательные сведения об организации. Если обязательств нет, оставьте 0.'
-                : 'Все поля анкеты обязательны.'}
+              {step === 0 || step === steps.length - 1
+                ? 'Бизнес-задача необязательна. Сумма, срок, цель и остальные сведения анкеты обязательны.'
+                : isOoo
+                  ? 'Заполните обязательные сведения об организации. Если обязательств нет, оставьте 0.'
+                  : 'Все поля анкеты обязательны.'}
             </p>
             {needsDebtReview && (
               <p role="status">
@@ -1399,39 +1399,25 @@ function ApplicationFormEditor({
             )}
             {step === 0 && (
               <>
-                {!isOoo && form.description.trim() && (
-                  <div className={styles.context}>
-                    <strong>Ваша бизнес-задача</strong>
-                    <p>{form.description}</p>
-                    {aiFilled.has('step1_financingParameters.businessTask') && (
-                      <Typography.Text view="primary-small" color="secondary">
-                        Заполнено автоматически, проверьте
-                      </Typography.Text>
-                    )}
-                  </div>
-                )}
                 {prefillMessage && <p role="status">{prefillMessage}</p>}
-                {errors.description && <p role="alert">{errors.description}</p>}
                 <div className={styles.fields}>
-                  {isOoo && (
-                    <Textarea
-                      name="businessTask"
-                      required
-                      block
-                      label="Бизнес-задача"
-                      labelView="outer"
-                      autosize
-                      minRows={2}
-                      maxRows={6}
-                      maxLength={500}
-                      value={form.description}
-                      error={errors.description}
-                      placeholder="Например, оплата поставщика до поступления денег от покупателя"
-                      onChange={(_, { value }) =>
-                        setForm({ ...form, description: value })
-                      }
-                    />
-                  )}
+                  <Textarea
+                    name="businessTask"
+                    block
+                    label="Бизнес-задача (необязательно)"
+                    labelView="outer"
+                    hint="Описание помогает ИИ подготовить заявку. При самостоятельном заполнении можно оставить пустым"
+                    autosize
+                    minRows={2}
+                    maxRows={6}
+                    maxLength={500}
+                    value={form.description}
+                    error={errors.description}
+                    placeholder="Например, оплата поставщика до поступления денег от покупателя"
+                    onChange={(_, { value }) =>
+                      setForm({ ...form, description: value })
+                    }
+                  />
                   <Input
                     name="amount"
                     required
@@ -1567,10 +1553,10 @@ function ApplicationFormEditor({
               <OooApplicationFields section="business" {...oooFieldProps} />
             )}
             {step === 2 && isOoo && (
-              <OooApplicationFields section="registration" {...oooFieldProps} />
-            )}
-            {step === 3 && isOoo && (
-              <OooApplicationFields section="consents" {...oooFieldProps} />
+              <>
+                <OooApplicationFields section="registration" {...oooFieldProps} />
+                <OooApplicationFields section="consents" {...oooFieldProps} />
+              </>
             )}
             {step === steps.length - 1 && (
               <>
@@ -1582,29 +1568,28 @@ function ApplicationFormEditor({
                   <h3 className={styles.reviewTitle}>
                     Параметры финансирования
                   </h3>
-                  {(isOoo || form.description.trim()) && (
-                    <div>
-                      <FieldLabel
-                        htmlFor={`${id}-reviewDescription`}
-                        text="Бизнес-задача"
-                        hint="Ваш исходный запрос о финансировании"
-                      />
-                      <Textarea
-                        id={`${id}-reviewDescription`}
-                        name="reviewDescription"
-                        aria-label="Бизнес-задача"
-                        block
-                        autosize
-                        minRows={2}
-                        maxRows={6}
-                        maxLength={isOoo ? 500 : 2000}
-                        value={form.description}
-                        onChange={(_, { value }) =>
-                          setForm({ ...form, description: value })
-                        }
-                      />
-                    </div>
-                  )}
+                  <div>
+                    <FieldLabel
+                      htmlFor={`${id}-reviewDescription`}
+                      text="Бизнес-задача (необязательно)"
+                      hint="Описание для ИИ. При самостоятельном заполнении можно оставить пустым"
+                    />
+                    <Textarea
+                      id={`${id}-reviewDescription`}
+                      name="reviewDescription"
+                      aria-label="Бизнес-задача"
+                      block
+                      autosize
+                      minRows={2}
+                      maxRows={6}
+                      maxLength={500}
+                      value={form.description}
+                      error={errors.description}
+                      onChange={(_, { value }) =>
+                        setForm({ ...form, description: value })
+                      }
+                    />
+                  </div>
                   <div>
                     <FieldLabel
                       htmlFor={`${id}-reviewAmount`}
@@ -1712,7 +1697,7 @@ function ApplicationFormEditor({
                       section="registration"
                       {...oooFieldProps}
                     />
-                    <h3 className={styles.reviewTitle}>Документы и согласия</h3>
+                    <h3 className={styles.reviewTitle}>Согласия</h3>
                     <OooApplicationFields section="consents" {...oooFieldProps} />
                     {!oooReadyToSubmit && (
                       <p role="status">

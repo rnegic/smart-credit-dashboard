@@ -59,6 +59,7 @@ const draftSchema = z.object({
     .partial()
     .default({}),
   currentStep: z.number().int().min(0).max(4).default(0),
+  wizardVersion: z.literal(2).optional(),
   started: z.boolean().default(false),
   serverForm: applicationFormSchema.nullable().default(null),
   confirmed: z.boolean().default(false),
@@ -96,7 +97,16 @@ export const localDraftSchema = z.union([
         ],
       }),
     ),
-])
+]).transform((draft) => ({
+  ...draft,
+  currentStep:
+    draft.wizardVersion !== 2 &&
+    draft.serverForm?.step2_businessData.applicant.type === 'OOO' &&
+    draft.currentStep >= 3
+      ? draft.currentStep - 1
+      : Math.min(draft.currentStep, 3),
+  wizardVersion: 2 as const,
+}))
 
 export function loadLocalDraft(key: string) {
   try {
@@ -145,7 +155,7 @@ export function numberOrNull(value: string) {
   return Number.isFinite(number) ? number : null
 }
 
-/** Five corporate UI steps map to the three stages accepted by the draft API. */
+/** Corporate UI steps map to the three stages accepted by the draft API. */
 export function getServerDraftStep(step: number, legalForm: string | null) {
   return legalForm === 'OOO' ? (step === 0 ? 0 : step < 3 ? 1 : 2) : step
 }
@@ -155,12 +165,17 @@ export function getApplicationDraftStep(draft: ApplicationDraft | null) {
   if (!draft) return 0
   if (draft.form.step2_businessData.applicant.type !== 'OOO')
     return draft.currentStep
-  const event = draft.form.meta?.events?.find((item) =>
-    /^ooo_step_[0-4]$/.test(item),
-  )
+  const events = draft.form.meta?.events ?? []
+  const event = events.find((item) => /^ooo_step_v2_[0-3]$/.test(item))
   const step = event ? Number(event.slice(-1)) : null
   if (step !== null && getServerDraftStep(step, 'OOO') === draft.currentStep)
     return step
+  const legacyEvent = events.find((item) => /^ooo_step_[0-4]$/.test(item))
+  if (legacyEvent) {
+    const legacyStep = Number(legacyEvent.slice(-1))
+    if (getServerDraftStep(legacyStep, 'OOO') === draft.currentStep)
+      return legacyStep >= 3 ? legacyStep - 1 : legacyStep
+  }
   return draft.currentStep === 0 ? 0 : 1
 }
 

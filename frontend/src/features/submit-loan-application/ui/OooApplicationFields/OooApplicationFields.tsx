@@ -215,14 +215,6 @@ export function OooApplicationFields({
 
   if (section === 'consents') {
     return (
-    <div className={styles.body}>
-      <section className={styles.notice}>
-        <h3>Документы</h3>
-        <p>
-          Загрузка документов в этой форме не предусмотрена. При необходимости
-          банк запросит отчетность, выписки и подтверждение полномочий отдельно.
-        </p>
-      </section>
       <div className={styles.consents}>
         <FieldLabel
           text="Согласия"
@@ -241,7 +233,6 @@ export function OooApplicationFields({
           />
         ))}
       </div>
-    </div>
     )
   }
 
@@ -316,7 +307,10 @@ export function OooApplicationFields({
           </dl>
           {errors.industry && <p role="alert">{errors.industry}</p>}
           <div className={styles.notice}>
-            <strong>
+            <strong className={confirmed ? styles.confirmed : undefined}>
+              {confirmed && (
+                <span className={styles.check} aria-hidden="true">✓ </span>
+              )}
               {confirmed
                 ? 'Сведения об организации подтверждены'
                 : 'Подтвердите вашу организацию'}
