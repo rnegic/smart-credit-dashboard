@@ -22,6 +22,12 @@ export const applicationDecisionSchema = z.enum([
 ])
 const riskClassSchema = z.enum(['A', 'B', 'C', 'D'])
 const internalScoreSchema = z.number().int().min(0).max(100)
+const businessScaleSchema = z.enum([
+  'MICRO',
+  'SMALL',
+  'OUT_OF_SCOPE',
+  'NEEDS_REVIEW',
+])
 const scoringSchema = z.object({
   rate: z.number().nullable(),
   termMonthsEquivalent: z.number(),
@@ -36,6 +42,7 @@ const scoringSchema = z.object({
   industryRatePremium: z.number(),
   absoluteMaxAmount: z.number(),
   calculatedLimit: z.number().nullable(),
+  businessScale: businessScaleSchema.nullish(),
   external: z.null(),
   points: z.null(),
 })
@@ -133,6 +140,27 @@ export const applicationDecisionLabels = {
   ALTERNATIVE_OFFER: 'Предложены другие условия',
   MANUAL_REVIEW: 'Ручная проверка',
 } as const
+export const businessScaleLabels = {
+  MICRO: 'Микробизнес',
+  SMALL: 'Малый бизнес',
+  OUT_OF_SCOPE: 'Вне заданных категорий',
+  NEEDS_REVIEW: 'Требуется проверка',
+} as const
+export const applicationPurposeLabels: Readonly<Record<string, string>> = {
+  SUPPLIERS: 'Оплата поставщикам',
+  SALARY: 'Выплата зарплаты',
+  RENT: 'Оплата аренды',
+  RAW_MATERIALS: 'Закупка сырья',
+  OTHER: 'Другое',
+}
+
+/** Display contract purpose codes while preserving free-text purposes from AI. */
+export function getApplicationPurposeLabel(value: string | null | undefined) {
+  if (!value) return 'Не указана'
+  return Object.hasOwn(applicationPurposeLabels, value)
+    ? applicationPurposeLabels[value]
+    : value
+}
 
 /** Load applications under the current session's isolated query key. */
 export function useApplications() {
