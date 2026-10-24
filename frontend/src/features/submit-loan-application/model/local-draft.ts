@@ -4,6 +4,7 @@ import {
   applicationApplicantSubmissionSchema,
   applicationDraftPathsSchema,
   applicationFormSchema,
+  type ApplicationDraft,
 } from '@/entities/application-form'
 
 const draftSchema = z.object({
@@ -33,7 +34,31 @@ const draftSchema = z.object({
     })
     .partial()
     .default({}),
-  currentStep: z.number().int().min(0).max(3).default(0),
+  oooEdits: z
+    .object({
+      companyName: z.string(),
+      inn: z.string(),
+      taxSystem: z.string(),
+      monthlyRevenue: z.string(),
+      annualRevenue: z.string(),
+      averageEmployeeCount: z.string(),
+      existingDebt: z.string(),
+      otherMonthlyObligations: z.string(),
+      personalData: z.boolean(),
+      bkiRequest: z.boolean(),
+      fnsRequest: z.boolean(),
+      ogrn: z.string(),
+      kpp: z.string(),
+      registrationDate: z.string(),
+      okved: z.string(),
+      registrationAddress: z.string(),
+      phone: z.string(),
+      email: z.string(),
+      industry: z.string(),
+    })
+    .partial()
+    .default({}),
+  currentStep: z.number().int().min(0).max(4).default(0),
   started: z.boolean().default(false),
   serverForm: applicationFormSchema.nullable().default(null),
   confirmed: z.boolean().default(false),
@@ -60,6 +85,7 @@ export const localDraftSchema = z.union([
         ...draft,
         termDays: '',
         ipEdits: { ...draft.ipEdits, existingDebt: '' },
+        oooEdits: { ...draft.oooEdits, existingDebt: '' },
         serverForm: null,
         currentStep: 0,
         needsDebtReview: true,
@@ -117,6 +143,25 @@ export function numberOrNull(value: string) {
   if (!value.trim()) return null
   const number = Number(value.replace(/\s/g, '').replace(',', '.'))
   return Number.isFinite(number) ? number : null
+}
+
+/** Five corporate UI steps map to the three stages accepted by the draft API. */
+export function getServerDraftStep(step: number, legalForm: string | null) {
+  return legalForm === 'OOO' ? (step === 0 ? 0 : step < 3 ? 1 : 2) : step
+}
+
+/** Restore the UI step from supported form metadata, including on another device. */
+export function getApplicationDraftStep(draft: ApplicationDraft | null) {
+  if (!draft) return 0
+  if (draft.form.step2_businessData.applicant.type !== 'OOO')
+    return draft.currentStep
+  const event = draft.form.meta?.events?.find((item) =>
+    /^ooo_step_[0-4]$/.test(item),
+  )
+  const step = event ? Number(event.slice(-1)) : null
+  if (step !== null && getServerDraftStep(step, 'OOO') === draft.currentStep)
+    return step
+  return draft.currentStep === 0 ? 0 : 1
 }
 
 /** Preserve valid stored dates; missing or invalid legacy input stays absent. */

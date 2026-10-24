@@ -60,6 +60,7 @@ const Modal = ({ open, children }) => open ? React.createElement('section', { ro
 Modal.Header = ({ title }) => React.createElement('header', null, title)
 Modal.Content = Modal.Footer = Text
 const IpApplicationFields = () => null
+const OooApplicationFields = () => null
 const companyEntity = { getIndustryGroup: (code) => code?.startsWith('47') ? { key: 'trade' } : undefined }
 const { ApplicationPreparation, ApplicationPreparationVisual } = load(`${feature}/ui/ApplicationPreparation/ApplicationPreparation.tsx`, {
   '@alfalab/core-components/typography': { Typography },
@@ -285,6 +286,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
     '@/shared/lib': { formatMoney: (value) => String(value) },
     '@/shared/ui': { FieldLabel: () => null, RequestState: () => null },
     '../IpApplicationFields': { IpApplicationFields }, '../ApplicationPreparation': { ApplicationPreparation, ApplicationPreparationVisual },
+    '../OooApplicationFields': { OooApplicationFields },
     '../../model/local-draft': { ...localDraft, useLocalDraft: localDraft.loadLocalDraft },
     '../../model/use-application-prefill': prefill,
     './ApplicationForm.module.scss': cssModule,

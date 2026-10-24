@@ -14,6 +14,8 @@ import { getCompanyAge, getIndustryGroup } from '@/entities/company'
 import {
   bankApplicationViewSchema,
   bankApplicationViewsSchema,
+  businessScaleLabels,
+  getApplicationPurposeLabel,
   type BankApplicationView,
 } from '@/entities/loan-application'
 import {
@@ -203,6 +205,8 @@ export function BankWorkspace() {
   const recommendation = application?.recommendation
   const finalRate = application?.offer?.finalRate ?? application?.finalRate
   const businessData = applicationForm.data?.step2_businessData
+  const isOoo = application?.legalForm === 'OOO'
+  const financials = businessData?.financials
   const monthlyRevenue = businessData?.financials?.monthlyRevenue
   const registrationDate = businessData?.applicant?.registrationDate
   const industryGroup = getIndustryGroup(businessData?.applicant?.mainOkved)
@@ -417,6 +421,52 @@ export function BankWorkspace() {
                       {applicationForm.isPending ? 'Загружаем…' : companyAge}
                     </dd>
                   </div>
+                  {isOoo && (
+                    <>
+                      <div>
+                        <dt>Годовая выручка</dt>
+                        <dd>
+                          {applicationForm.isPending
+                            ? 'Загружаем…'
+                            : financials?.annualRevenue == null
+                              ? 'Не указана'
+                              : formatMoney(financials.annualRevenue)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Среднесписочная численность</dt>
+                        <dd>
+                          {applicationForm.isPending
+                            ? 'Загружаем…'
+                            : financials?.averageEmployeeCount == null
+                              ? 'Не указана'
+                              : new Intl.NumberFormat('ru-RU').format(
+                                  financials.averageEmployeeCount,
+                                )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Ежемесячные платежи по кредитам</dt>
+                        <dd>
+                          {applicationForm.isPending
+                            ? 'Загружаем…'
+                            : financials?.existingDebt == null
+                              ? 'Не указаны'
+                              : formatMoney(financials.existingDebt)}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Иные ежемесячные обязательства</dt>
+                        <dd>
+                          {applicationForm.isPending
+                            ? 'Загружаем…'
+                            : financials?.otherMonthlyObligations == null
+                              ? 'Не указаны'
+                              : formatMoney(financials.otherMonthlyObligations)}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                 </dl>
                 {applicationForm.isError &&
                   !(applicationForm.error instanceof ApiError &&
@@ -458,6 +508,26 @@ export function BankWorkspace() {
                     <dt>Сумма</dt>
                     <dd>{formatMoney(application.amount)}</dd>
                   </div>
+                  {isOoo && (
+                    <>
+                      <div>
+                        <dt>ОГРН</dt>
+                        <dd>{businessData?.applicant?.ogrn ?? 'Не передан'}</dd>
+                      </div>
+                      <div>
+                        <dt>КПП</dt>
+                        <dd>{businessData?.applicant?.kpp ?? 'Не передан'}</dd>
+                      </div>
+                      <div>
+                        <dt>Масштаб бизнеса по расчету сервера</dt>
+                        <dd>
+                          {scoring?.businessScale
+                            ? businessScaleLabels[scoring.businessScale]
+                            : 'Не передан'}
+                        </dd>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <dt>Срок</dt>
                     <dd>{application.termDays} дней</dd>
@@ -478,7 +548,7 @@ export function BankWorkspace() {
                   </div>
                   <div>
                     <dt>Цель</dt>
-                    <dd>{application.purpose ?? 'Не указана'}</dd>
+                    <dd>{getApplicationPurposeLabel(application.purpose)}</dd>
                   </div>
                   <div>
                     <dt>Создана</dt>
