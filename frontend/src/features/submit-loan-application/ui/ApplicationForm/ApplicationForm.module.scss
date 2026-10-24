@@ -109,11 +109,11 @@
   margin: var(--gap-0);
   list-style: none;
 }
-.ipForm {
+.detailsForm {
   gap: var(--gap-16);
   padding-block: var(--gap-16);
 }
-.ipForm .stepper {
+.detailsForm .stepper {
   font-size: var(--gap-14);
 }
 .reviewTitle {
@@ -241,10 +241,24 @@
     flex-direction: column-reverse;
   }
   .stepper {
+    display: flex;
+    align-items: flex-start;
     gap: var(--gap-8);
   }
   .stepper li {
+    min-inline-size: var(--gap-24);
     flex-direction: column;
+    font-size: var(--gap-12);
+  }
+  .stepper li[aria-current='step'] {
+    flex: 1;
+    flex-direction: row;
+  }
+  .stepper li:not([aria-current='step']) {
+    font-size: 0;
+    gap: var(--gap-0);
+  }
+  .stepper li:not([aria-current='step']) span {
     font-size: var(--gap-12);
   }
   .summary > div {
