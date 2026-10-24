@@ -61,6 +61,12 @@
   color: var(--color-light-text-secondary);
 }
 
+.refreshButton {
+  flex: 0 0 var(--gap-40);
+  inline-size: var(--gap-40);
+  block-size: var(--gap-40);
+}
+
 .item > button {
   justify-self: start;
 }

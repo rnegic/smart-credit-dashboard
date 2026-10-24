@@ -2,8 +2,10 @@ import { useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@alfalab/core-components/badge'
 import { Button } from '@alfalab/core-components/button'
+import { IconButton } from '@alfalab/core-components/icon-button'
 import { Typography } from '@alfalab/core-components/typography'
 import { BellMIcon } from '@alfalab/icons/glyph/dist/BellMIcon'
+import { ArrowsCwMIcon } from '@alfalab/icons/glyph/dist/ArrowsCwMIcon'
 import { Link } from 'react-router-dom'
 import { useNotifications } from '@/entities/notification'
 import { useDashboard } from '@/entities/dashboard'
@@ -119,16 +121,20 @@ export function NotificationCenter({
                 : 'Восстанавливаем соединение. Список можно обновить вручную.'}
           </Typography.Text>
           <div className={styles.actions}>
-            <Button
+            <IconButton
+              className={styles.refreshButton}
               type="button"
               view="secondary"
               size={40}
-              loading={notifications.isFetching}
-              disabled={notifications.isFetching || read.isPending}
-              onClick={() => { void notifications.refetch() }}
-            >
-              Обновить
-            </Button>
+              icon={<ArrowsCwMIcon aria-hidden="true" />}
+              aria-label="Обновить уведомления"
+              aria-busy={notifications.isFetching}
+              title="Обновить уведомления"
+              disabled={notifications.isPending || read.isPending}
+              onClick={() => {
+                if (!notifications.isFetching) void notifications.refetch()
+              }}
+            />
             <Button
               type="button"
               view="transparent"
