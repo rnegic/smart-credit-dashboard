@@ -25,6 +25,7 @@ export function getApplicationProgress(
     OFFER_READY: 'DECISION',
     ACCEPTED: 'ISSUED',
     DECLINED: 'DECISION',
+    SIGNATURE_PENDING: 'SIGNING',
   } as const
   const currentIndex = stages.findIndex(
     (stage) => stage.code === currentCode[status],

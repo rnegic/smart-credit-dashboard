@@ -19,6 +19,7 @@ const presentation = {
   OFFER_READY: { color: 'blue', Icon: DocumentLinesLineSIcon },
   ACCEPTED: { color: 'green', Icon: CheckmarkCircleSIcon },
   DECLINED: { color: 'red', Icon: CrossCircleSIcon },
+  SIGNATURE_PENDING: { color: 'blue', Icon: DocumentLinesLineSIcon },
 } as const
 
 /** Renders a stage with both a label and a visual indicator. */

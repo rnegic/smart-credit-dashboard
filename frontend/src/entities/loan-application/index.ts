@@ -15,6 +15,7 @@ export const applicationStatusSchema = z.enum([
   'OFFER_READY',
   'ACCEPTED',
   'DECLINED',
+  'SIGNATURE_PENDING',
 ])
 export const applicationDecisionSchema = z.enum([
   'INFO_REQUIRED',
@@ -135,6 +136,7 @@ export const applicationStatusLabels = {
   OFFER_READY: 'Предложение банка',
   ACCEPTED: 'Предложение принято',
   DECLINED: 'Отказ по заявке',
+  SIGNATURE_PENDING: 'Подписание документов',
 } as const
 export const applicationDecisionLabels = {
   INFO_REQUIRED: 'Нужны дополнительные сведения',

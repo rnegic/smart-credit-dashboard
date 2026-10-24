@@ -79,6 +79,7 @@ export function ApplicationQueue({
     OFFER_READY: 0,
     ACCEPTED: 0,
     DECLINED: 0,
+    SIGNATURE_PENDING: 0,
   }
   for (const application of applications) counts[application.status] += 1
   const hasFilters = search !== '' || status !== 'ALL'
