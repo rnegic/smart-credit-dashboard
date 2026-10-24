@@ -49,7 +49,8 @@ import {
 } from '@/shared/api'
 import { ROUTES } from '@/shared/config'
 import { formatMoney } from '@/shared/lib'
-import { FieldLabel, RequestState } from '@/shared/ui'
+import { FieldLabel, Panel, RequestState } from '@/shared/ui'
+import { ProfileCompany } from '@/features/edit-profile'
 import {
   IpApplicationFields,
   type IpApplicationData,
@@ -283,6 +284,9 @@ function ApplicationFormEditor({
   const termRef = useRef<HTMLDivElement>(null)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
+  const companyPanelTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const [companyPanelOpen, setCompanyPanelOpen] = useState(false)
+  const [sending, setSending] = useState(false)
   const discardButtonRef = useRef<HTMLButtonElement>(null)
   const submitting = useRef(false)
   const saving = useRef(false)
@@ -343,8 +347,6 @@ function ApplicationFormEditor({
     localDraft?.needsDebtReview ?? needsFinancingReview,
   )
   const ipData: IpApplicationData = {
-    companyName: company?.name ?? '',
-    inn: company?.inn ?? '',
     legalForm: 'ИП',
     taxSystem: '',
     monthlyRevenue: '',
@@ -352,10 +354,8 @@ function ApplicationFormEditor({
     personalData: false,
     bkiRequest: false,
     fnsRequest: false,
-    fullName: company?.name.replace(/^ИП\s+/, '') ?? '',
     ogrnip: '',
     registrationDate: '',
-    okved: company?.okved ?? '',
     registrationAddress: '',
     phone: serverForm
       ? (serverForm.step2_businessData.applicant.phone ?? '')
@@ -364,8 +364,13 @@ function ApplicationFormEditor({
       ? (serverForm.step2_businessData.applicant.email ?? '')
       : (contacts?.email ?? ''),
     ...ipEdits,
+    companyName: company?.name ?? ipEdits.companyName ?? '',
+    inn: company?.inn ?? ipEdits.inn ?? '',
+    fullName:
+      company?.name.replace(/^ИП\s+/, '') || ipEdits.fullName || '',
+    okved: company?.okved ?? ipEdits.okved ?? '',
     industry:
-      getIndustryGroup(ipEdits.okved ?? company?.okved)?.key ??
+      getIndustryGroup(company?.okved ?? ipEdits.okved)?.key ??
       ipEdits.industry ??
       '',
   }
@@ -463,6 +468,11 @@ function ApplicationFormEditor({
         ),
       ),
     )
+  }
+
+  function openCompanyPanel(trigger: HTMLButtonElement) {
+    companyPanelTriggerRef.current = trigger
+    setCompanyPanelOpen(true)
   }
 
   function applyPrefill(response: PrefillResponse, description: string) {
@@ -763,9 +773,12 @@ function ApplicationFormEditor({
     },
     onSuccess: async (_, { generation }) => {
       if (!isCurrentSession(cache, scope, generation)) return
+      await Promise.all([
+        cache.cancelQueries({ queryKey: sessionKey, exact: true }),
+        cache.cancelQueries({ queryKey: ['client', scope] }),
+      ])
+      if (!isCurrentSession(cache, scope, generation)) return
       resetAfterClose.current = true
-      setOpen(false)
-      setStarted(false)
       savedSnapshot.current = ''
       try {
         sessionStorage.removeItem(storageKey)
@@ -773,18 +786,15 @@ function ApplicationFormEditor({
       } catch {
         /* Storage may be unavailable. */
       }
-      await Promise.all([
-        cache.cancelQueries({ queryKey: sessionKey, exact: true }),
-        cache.cancelQueries({ queryKey: ['client', scope] }),
-      ])
-      if (!isCurrentSession(cache, scope, generation)) return
       cache.setQueryData(draftKey, null)
       await Promise.all([
         cache.invalidateQueries({ queryKey: ['client', scope] }),
         cache.invalidateQueries({ queryKey: sessionKey, exact: true }),
       ])
-      if (isCurrentSession(cache, scope, generation))
+      if (isCurrentSession(cache, scope, generation)) {
+        setOpen(false)
         void navigate(ROUTES.applications, { replace: true })
+      }
     },
     onError: (error, { generation }) => {
       if (!isCurrentSession(cache, scope, generation)) return
@@ -793,8 +803,10 @@ function ApplicationFormEditor({
         void cache.invalidateQueries({ queryKey: sessionKey })
       }
     },
-    onSettled: () => {
+    onSettled: (_data, error, { generation }) => {
       submitting.current = false
+      if (error || !isCurrentSession(cache, scope, generation))
+        setSending(false)
     },
     retry: false,
   })
@@ -853,9 +865,6 @@ function ApplicationFormEditor({
             : issue.message
       }
     }
-    if (section === 'registration' && !ipConfirmed)
-      fieldErrors.confirmed =
-        'Подтвердите, что сведения относятся к вашей организации'
     return fieldErrors
   }
 
@@ -1033,6 +1042,7 @@ function ApplicationFormEditor({
       return
     }
     submitting.current = true
+    setSending(true)
     submit.mutate({ body: submission.data, generation: getSessionGeneration() })
   }
   function focusInvalidField(name: string | undefined) {
@@ -1052,8 +1062,7 @@ function ApplicationFormEditor({
     !open && (prefill.stage === 'preparing' || prefill.stage === 'slow')
   const oooReadyToSubmit =
     !isOoo ||
-    (ipConfirmed &&
-      applicationFormSubmissionSchema.safeParse(buildSubmission()).success)
+    applicationFormSubmissionSchema.safeParse(buildSubmission()).success
   const oooFieldProps = {
     value: oooData,
     onChange: updateOooData,
@@ -1319,6 +1328,14 @@ function ApplicationFormEditor({
           </div>
         </Modal.Footer>
       </Modal>
+      <Panel
+        open={companyPanelOpen}
+        title="Данные компании"
+        onClose={() => setCompanyPanelOpen(false)}
+        returnFocusRef={companyPanelTriggerRef}
+      >
+        <ProfileCompany onSaved={() => setCompanyPanelOpen(false)} />
+      </Panel>
       <Modal
         open={open}
         size={800}
@@ -1357,14 +1374,35 @@ function ApplicationFormEditor({
           title={<span id={`${id}-title`}>Заявка на финансирование</span>}
         />
         <Modal.Content>
-          <form
-            id={`${id}-form`}
-            ref={formRef}
-            onSubmit={handleNext}
-            className={`${styles.form} ${step > 0 && step < steps.length - 1 ? styles.detailsForm : ''}`}
-            noValidate
-            aria-busy={saveDraft.isPending || submit.isPending}
-          >
+          {sending ? (
+            <div
+              className={styles.sending}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <span className={styles.spinner} aria-hidden="true" />
+              <Typography.TitleResponsive
+                tag="h2"
+                view="small"
+                font="system"
+              >
+                Отправляем заявку
+              </Typography.TitleResponsive>
+              <Typography.Text tag="p" color="secondary">
+                Проверяем данные и формируем предложение банка. Обычно это
+                занимает несколько секунд.
+              </Typography.Text>
+            </div>
+          ) : (
+            <form
+              id={`${id}-form`}
+              ref={formRef}
+              onSubmit={handleNext}
+              className={`${styles.form} ${step > 0 && step < steps.length - 1 ? styles.detailsForm : ''}`}
+              noValidate
+              aria-busy={saveDraft.isPending || submit.isPending}
+            >
             <ol className={styles.stepper} aria-label="Заполнение заявки">
               {steps.map((title, index) => (
                 <li
@@ -1544,6 +1582,7 @@ function ApplicationFormEditor({
                 profileMatches={ipData.inn === company?.inn}
                 confirmed={ipConfirmed}
                 onConfirm={() => setIpConfirmed(true)}
+                onEditProfile={openCompanyPanel}
                 aiFilled={aiFilled}
                 missingFields={missingFields}
                 errors={errors}
@@ -1554,7 +1593,11 @@ function ApplicationFormEditor({
             )}
             {step === 2 && isOoo && (
               <>
-                <OooApplicationFields section="registration" {...oooFieldProps} />
+                <OooApplicationFields
+                  section="registration"
+                  {...oooFieldProps}
+                  onEditProfile={openCompanyPanel}
+                />
                 <OooApplicationFields section="consents" {...oooFieldProps} />
               </>
             )}
@@ -1682,6 +1725,7 @@ function ApplicationFormEditor({
                       section="registration"
                       value={ipData}
                       onChange={updateIpData}
+                      onEditProfile={openCompanyPanel}
                       aiFilled={aiFilled}
                       missingFields={missingFields}
                       errors={errors}
@@ -1696,13 +1740,13 @@ function ApplicationFormEditor({
                     <OooApplicationFields
                       section="registration"
                       {...oooFieldProps}
+                      onEditProfile={openCompanyPanel}
                     />
                     <h3 className={styles.reviewTitle}>Согласия</h3>
                     <OooApplicationFields section="consents" {...oooFieldProps} />
                     {!oooReadyToSubmit && (
                       <p role="status">
-                        Для отправки заполните обязательные поля, подтвердите
-                        сведения об организации и все согласия.
+                        Для отправки заполните обязательные поля и все согласия.
                       </p>
                     )}
                   </>
@@ -1713,16 +1757,17 @@ function ApplicationFormEditor({
                 </p>
               </>
             )}
-            {errors.submission && <p role="alert">{errors.submission}</p>}
-            {saveDraft.error && <RequestState error={saveDraft.error} />}
-            {submit.error && <RequestState error={submit.error} />}
-          </form>
+              {errors.submission && <p role="alert">{errors.submission}</p>}
+              {saveDraft.error && <RequestState error={saveDraft.error} />}
+              {submit.error && <RequestState error={submit.error} />}
+            </form>
+          )}
         </Modal.Content>
         <Modal.Footer sticky>
           <div className={styles.footer}>
             <Button
               view="secondary"
-              disabled={saveDraft.isPending || submit.isPending}
+              disabled={sending || saveDraft.isPending || submit.isPending}
               onClick={() => (step > 0 ? setStep(step - 1) : setOpen(false))}
             >
               {step > 0 ? 'Назад' : 'К бизнес-задаче'}
@@ -1732,15 +1777,20 @@ function ApplicationFormEditor({
               type="submit"
               view="primary"
               disabled={
+                sending ||
                 saveDraft.isPending ||
                 submit.isPending ||
                 Boolean(dashboard.error) ||
                 !company ||
                 (step === steps.length - 1 && !oooReadyToSubmit)
               }
-              loading={submit.isPending}
+              loading={sending || submit.isPending}
             >
-              {step === steps.length - 1 ? 'Отправить заявку' : 'Продолжить'}
+              {sending
+                ? 'Отправляем заявку'
+                : step === steps.length - 1
+                  ? 'Отправить заявку'
+                  : 'Продолжить'}
             </Button>
           </div>
         </Modal.Footer>

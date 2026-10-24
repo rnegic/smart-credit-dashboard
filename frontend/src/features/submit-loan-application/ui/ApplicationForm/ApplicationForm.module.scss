@@ -100,6 +100,37 @@
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
+.sending {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--gap-16);
+  min-block-size: 24rem;
+  padding-block: var(--gap-32);
+  text-align: center;
+}
+.sending p {
+  margin: var(--gap-0);
+  max-inline-size: 40ch;
+}
+.spinner {
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border: 0.25rem solid var(--color-light-neutral-translucent-200);
+  border-block-start-color: var(--color-light-accent-primary);
+  border-radius: var(--border-radius-circle);
+  animation: spin 800ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
 .stepper {
   display: grid;
   grid-auto-flow: column;
