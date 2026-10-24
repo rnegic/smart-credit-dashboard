@@ -84,6 +84,7 @@ export function ApplicationPreparation({
       <div className={styles.visualSlot} aria-hidden="true">
         {visible && <ApplicationPreparationVisual />}
       </div>
+      <p className={styles.timing}>Обработка в среднем занимает 10 секунд.</p>
       <div className={styles.explanation}>
         <p
           className={styles.copy}

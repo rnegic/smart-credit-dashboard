@@ -53,6 +53,12 @@
   );
 }
 
+.timing {
+  margin: var(--gap-0);
+  font-size: var(--gap-14);
+  color: var(--color-light-neutral-700-press);
+}
+
 .illustration {
   position: relative;
   isolation: isolate;
