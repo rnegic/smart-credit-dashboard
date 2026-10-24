@@ -9,7 +9,9 @@ import { useDashboard } from '@/entities/dashboard'
 import {
   applicationDecisionLabels,
   applicationStatusLabels,
+  businessScaleLabels,
   getApplicationProgress,
+  getApplicationPurposeLabel,
   useApplications,
   type Application,
   type ApplicationView,
@@ -56,6 +58,7 @@ export function ApplicationOverview({
   // Company-wide dashboard offers do not identify their application.
   const offer = applicationView?.offer
   const scoring = applicationView?.scoring
+  const isOoo = applicationView?.legalForm === 'OOO'
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   const urgentUntil = new Date(today)
@@ -351,7 +354,7 @@ export function ApplicationOverview({
         </div>
         <div>
           <dt>Цель</dt>
-          <dd>{application.purpose || 'Не указана'}</dd>
+          <dd>{getApplicationPurposeLabel(application.purpose)}</dd>
         </div>
         <div>
           <dt>Запрошенный срок</dt>
@@ -386,6 +389,32 @@ export function ApplicationOverview({
           </>
         )}
       </dl>
+      {isOoo && (
+        <div className={styles.notice}>
+          <dl className={styles.parameters}>
+            <div>
+              <dt>Масштаб бизнеса по расчету банка</dt>
+              <dd>
+                {scoring?.businessScale
+                  ? businessScaleLabels[scoring.businessScale]
+                  : 'Банк пока не передал расчет'}
+              </dd>
+            </div>
+            <div>
+              <dt>Предварительная базовая ставка</dt>
+              <dd>
+                {application.rate == null
+                  ? 'Требуется индивидуальное рассмотрение'
+                  : `${application.rate}% годовых`}
+              </dd>
+            </div>
+          </dl>
+          <Typography.Text tag="p" view="primary-small" color="secondary">
+            Масштаб не является классом риска. Ставка рассчитана сервером для
+            исходной заявки; итоговые условия определяет банк в предложении.
+          </Typography.Text>
+        </div>
+      )}
       {scoring && (
         <>
           <Typography.TitleResponsive tag="h3" view="small" font="system">
@@ -515,7 +544,7 @@ export function ApplicationOverview({
             </Typography.TitleResponsive>
             {awaitingClientChoice ? (
               <Typography.Text tag="p" color="secondary">
-                Цель: {application.purpose || 'Не указана'}
+                Цель: {getApplicationPurposeLabel(application.purpose)}
               </Typography.Text>
             ) : (
               <>
@@ -527,8 +556,19 @@ export function ApplicationOverview({
                 </Typography.Text>
                 <Typography.Text tag="p" color="secondary">
                   Запрошенный срок: {application.termDays} дней
-                  {application.purpose && ` · ${application.purpose}`}
+                  {application.purpose &&
+                    ` · ${getApplicationPurposeLabel(application.purpose)}`}
                 </Typography.Text>
+                {isOoo && (
+                  <Typography.Text tag="p" view="primary-small" color="secondary">
+                    Масштаб бизнеса:{' '}
+                    {scoring?.businessScale
+                      ? businessScaleLabels[scoring.businessScale]
+                      : 'Ожидает расчета банка'}
+                    {application.rate != null &&
+                      ` · Предварительная ставка ${application.rate}% годовых`}
+                  </Typography.Text>
+                )}
                 {officerCommentNotice}
               </>
             )}
