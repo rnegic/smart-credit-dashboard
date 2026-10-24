@@ -1,5 +1,9 @@
 import { z } from 'zod'
 import { useQuery } from '@tanstack/react-query'
+import {
+  applicationDecisionSchema,
+  applicationStatusSchema,
+} from '@/entities/loan-application'
 import { apiRequest, useApiScope } from '@/shared/api'
 
 export const dashboardSchema = z.object({
@@ -17,30 +21,26 @@ export const dashboardSchema = z.object({
       termDays: z.number().int(),
       rate: z.number().nullable(),
       purpose: z.string().nullable(),
-      status: z.enum(['IN_REVIEW', 'OFFER_READY', 'ACCEPTED', 'DECLINED']),
-      decision: z
-        .enum([
-          'INFO_REQUIRED',
-          'DECLINED',
-          'APPROVED',
-          'ALTERNATIVE_OFFER',
-          'MANUAL_REVIEW',
-        ])
-        .nullable(),
+      status: applicationStatusSchema,
+      decision: applicationDecisionSchema.nullable(),
       finalRate: z.number().nullable(),
       createdAt: z.iso.datetime({ offset: true }),
     })
     .nullable(),
   stages: z.array(
     z.object({
-      code: z.enum(['SUBMITTED', 'REVIEW', 'OFFER', 'ISSUED']),
+      code: z.enum(['SUBMITTED', 'REVIEW', 'OFFER', 'SIGNING', 'ISSUED']),
       title: z.string(),
       state: z.enum(['DONE', 'CURRENT', 'PENDING']),
     }),
   ),
   requiredActions: z.array(
     z.object({
-      code: z.enum(['CREATE_APPLICATION', 'ACCEPT_OFFER']),
+      code: z.enum([
+        'CREATE_APPLICATION',
+        'ACCEPT_OFFER',
+        'SIGN_DOCUMENTS',
+      ]),
       title: z.string(),
     }),
   ),
