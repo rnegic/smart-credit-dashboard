@@ -1,9 +1,18 @@
-.launcherSpace {
-  display: contents;
-}
+.floatingRoot {
+  position: fixed;
+  inset-block-end: max(var(--gap-24), env(safe-area-inset-bottom));
+  inset-inline-end: var(--gap-24);
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--gap-12);
+  max-inline-size: calc(100% - var(--gap-24) - var(--gap-24));
+  pointer-events: none;
 
-.panel {
-  --color-light-text-secondary: var(--color-light-neutral-700-press);
+  > * {
+    pointer-events: auto;
+  }
 }
 
 .launcher {
@@ -12,65 +21,131 @@
   --button-primary-active-bg-color: var(--color-light-go-violet);
   --button-primary-mobile-base-bg-color: var(--button-primary-base-bg-color);
   --button-primary-mobile-hover-bg-color: var(--button-primary-hover-bg-color);
-  --button-primary-mobile-active-bg-color: var(
-    --button-primary-active-bg-color
-  );
+  --button-primary-mobile-active-bg-color: var(--button-primary-active-bg-color);
+}
 
-  position: fixed;
-  inset-block-end: var(--gap-24);
-  inset-inline-end: var(--gap-24);
-  z-index: 10;
-  max-inline-size: calc(100% - var(--gap-24) - var(--gap-24));
+.launcher {
+  flex-shrink: 0;
   border-radius: var(--border-radius-64);
   box-shadow: var(--shadow-m);
 }
 
-.headerTitle {
+.compactLauncher {
+  inline-size: var(--gap-56);
+  min-inline-size: var(--gap-56);
+  padding-inline: var(--gap-16);
+  border-radius: var(--border-radius-circle);
+
+  .launcherLabel {
+    display: none;
+  }
+}
+
+.popup {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  inline-size: 24rem;
+  max-inline-size: 100%;
+  block-size: min(29rem, calc(100dvh - var(--gap-56) - var(--gap-64) - var(--gap-56)));
+  overflow: hidden;
+  border: var(--gap-1) solid var(--color-light-neutral-300);
+  border-radius: var(--border-radius-16);
+  background-color: var(--color-light-modal-bg-primary);
+  box-shadow: var(--shadow-m);
+  color: var(--color-light-text-primary);
+}
+
+.header {
+  display: flex;
   align-items: center;
-  gap: var(--gap-8);
+  gap: var(--gap-12);
   min-inline-size: var(--gap-0);
-  overflow-wrap: anywhere;
+  inline-size: 100%;
+}
+
+.popup > .header {
+  padding: var(--gap-16) var(--gap-20);
+  border-block-end: var(--gap-1) solid var(--color-light-neutral-300);
+}
+
+.heading {
+  flex: 1;
+  min-inline-size: var(--gap-0);
 }
 
 .body {
-  display: grid;
-  gap: var(--gap-24);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gap-20);
+  min-block-size: var(--gap-0);
   min-inline-size: var(--gap-0);
-  padding-block: var(--gap-8) var(--gap-24);
-  color: var(--color-light-text-primary);
+  padding: var(--gap-16) var(--gap-20);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
 
-.welcome {
-  display: grid;
-  justify-items: start;
-  gap: var(--gap-12);
-}
-
-.assistantIcon {
-  display: grid;
-  place-items: center;
-  inline-size: var(--gap-48);
-  block-size: var(--gap-48);
-  margin-block-end: var(--gap-4);
-  border-radius: var(--border-radius-16);
-  color: var(--color-light-accent-primary);
-  background-color: var(--color-light-status-muted-negative);
-}
-
-.muted {
-  color: var(--color-light-text-secondary);
-}
-
 .contextCard {
-  box-sizing: border-box;
   display: grid;
   gap: var(--gap-8);
   padding: var(--gap-20);
   border-radius: var(--border-radius-20);
   background-color: var(--color-light-base-bg-secondary);
+}
+
+.contextLine {
+  display: grid;
+  gap: var(--gap-4);
+}
+
+.welcome {
+  display: grid;
+  gap: var(--gap-12);
+}
+
+.dialogue,
+.turn {
+  display: grid;
+  gap: var(--gap-16);
+}
+
+.dialogue:empty {
+  display: none;
+}
+
+.userMessage {
+  justify-self: end;
+  max-inline-size: 90%;
+  padding: var(--gap-12) var(--gap-16);
+  border-radius: var(--border-radius-16);
+  border-end-end-radius: var(--border-radius-4);
+  background-color: var(--color-light-base-bg-secondary);
+  white-space: pre-wrap;
+}
+
+.assistantMessage {
+  display: grid;
+  justify-items: start;
+  gap: var(--gap-8);
+  min-inline-size: var(--gap-0);
+}
+
+.answer {
+  white-space: pre-wrap;
+}
+
+.pending {
+  color: var(--color-light-text-secondary);
+}
+
+.error {
+  display: grid;
+  justify-items: start;
+  gap: var(--gap-12);
+  padding: var(--gap-12);
+  border-radius: var(--border-radius-12);
+  background-color: var(--color-light-status-muted-negative);
 }
 
 .prompts {
@@ -81,44 +156,30 @@
 
 .prompt {
   max-inline-size: 100%;
+  text-align: start;
   white-space: normal;
 }
 
-.dialogue,
-.turn {
-  display: grid;
-  gap: var(--gap-16);
-}
-
-.userMessage,
-.assistantMessage {
-  box-sizing: border-box;
+.composer {
   display: grid;
   gap: var(--gap-8);
-  min-inline-size: var(--gap-0);
-  padding: var(--gap-16);
-  border-radius: var(--border-radius-20);
+  inline-size: 100%;
 }
 
-.userMessage {
-  justify-self: end;
-  max-inline-size: 90%;
-  border-end-end-radius: var(--border-radius-4);
-  background-color: var(--color-light-base-bg-secondary);
+.popup > .composer {
+  padding: var(--gap-12) var(--gap-20) var(--gap-16);
+  border-block-start: var(--gap-1) solid var(--color-light-neutral-300);
 }
 
-.assistantMessage {
+.newChat {
   justify-self: start;
-  border-end-start-radius: var(--border-radius-4);
-  background-color: var(--color-light-status-muted-info);
 }
 
 .form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
-  gap: var(--gap-12);
-  inline-size: 100%;
+  gap: var(--gap-8);
   min-inline-size: var(--gap-0);
 }
 
@@ -127,41 +188,38 @@
 }
 
 .sendButton {
-  inline-size: var(--gap-56);
+  inline-size: var(--gap-48);
+  min-inline-size: var(--gap-48);
   padding-inline: var(--gap-0);
 }
 
-.inputHint {
-  grid-column: 1 / -1;
-  color: var(--color-light-text-secondary);
+.hint {
+  overflow-wrap: anywhere;
+}
+
+.panelContent {
+  display: flex;
+  flex: 1;
+  min-block-size: var(--gap-0);
+}
+
+.nativePanel .body {
+  padding-inline: var(--gap-0);
 }
 
 @media (max-width: 47.99rem) {
-  .launcher {
-    inset-block-end: var(--gap-24);
+  .floatingRoot {
     inset-inline-end: var(--gap-16);
+  }
+
+  .launcher {
     inline-size: var(--gap-56);
     min-inline-size: var(--gap-56);
     padding-inline: var(--gap-16);
-    max-inline-size: none;
     border-radius: var(--border-radius-circle);
   }
 
   .launcherLabel {
-    display: none;
-  }
-
-  .contextCard {
-    padding: var(--gap-16);
-  }
-}
-
-@media (max-height: 32rem) {
-  .body {
-    gap: var(--gap-16);
-  }
-
-  .assistantIcon {
     display: none;
   }
 }
