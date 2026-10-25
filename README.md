@@ -39,6 +39,19 @@ backend/SmartCredit/src/main/resources/db/migration/           # Миграци�
 .github/workflows/deploy.yml                                 # Ручной запуск сборки и доставки через GHCR
 ```
 
+### Frontend: FSD
+
+| Слой в `frontend/src/` | Что в нём находится | Примеры |
+| --- | --- | --- |
+| `app` | Запуск приложения, провайдеры, общие layouts и глобальные стили | `providers`, `CabinetLayout`, `BankLayout` |
+| `pages` | Экраны маршрутов и их композиция | `dashboard`, `bank`, `application-flow`, `login` |
+| `widgets` | Крупные блоки экрана, собранные из сущностей и действий | `application-overview`, `bank-workspace`, `ai-copilot-drawer` |
+| `features` | Пользовательские действия, их состояние и обработка запросов | `submit-loan-application`, `sign-documents`, `send-ai-message` |
+| `entities` | Модели предметной области, Zod-схемы и работа с серверными данными | `company`, `loan-application`, `application-document`, `session` |
+| `shared` | Код без привязки к конкретному сценарию | HTTP-клиент, обёртки над Alfa UI, форматирование, конфигурация маршрутов |
+
+Основное направление зависимостей: `pages → widgets → features → entities → shared`; `app` связывает приложение целиком. В текущем коде есть композиция соседних features, например форма использует редактирование профиля. Отдельного ESLint-правила, которое проверяет границы FSD, пока нет.
+
 ### Доступ и API
 
 Аутентификация основана на серверном `HttpSession` и cookie **`JSESSIONID`**. В сессии хранится `userId`, время неактивности ограничено двумя часами.
@@ -110,6 +123,8 @@ Apache 2.0 является свободной пермиссивной лице
 - Для предзаполнения и помощника доступны `json_object`, `json_schema` и `text`. Режим `text` только убирает параметр `response_format`: содержимое ответа по-прежнему должно быть JSON. Автоматического переключения форматов нет.
 
 После изменения `.env` пересоздайте backend:
+
+**Перед перезапуском учтите сброс демо-БД:** в текущей конфигурации `APP_DEMO_RESET_DB_ON_STARTUP` по умолчанию равен `true`. Для сохранения данных backend должен получать `APP_DEMO_RESET_DB_ON_STARTUP=false`; в Compose переменную нужно явно передать через `environment`, одного значения в `.env` недостаточно.
 
 ```bash
 docker compose up -d --force-recreate backend

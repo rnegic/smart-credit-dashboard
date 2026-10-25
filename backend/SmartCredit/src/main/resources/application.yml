@@ -42,7 +42,7 @@ app:
   openai:
     base-url: ${OPENAI_BASE_URL:https://routerai.ru/api/v1}
     api-key: ${OPENAI_API_KEY:}
-    model: ${OPENAI_MODEL:nvidia/nemotron-3.5-super-vl}
+    model: ${OPENAI_MODEL:mistralai/mistral-small-2603}
     response-format: ${OPENAI_RESPONSE_FORMAT:json_object}
     connect-timeout: ${OPENAI_CONNECT_TIMEOUT:10s}
     read-timeout: ${OPENAI_READ_TIMEOUT:100s}

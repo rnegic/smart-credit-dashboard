@@ -25,7 +25,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://routerai.ru/api/v1}"
-      OPENAI_MODEL: "${OPENAI_MODEL:-nvidia/nemotron-3.5-super-vl}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-mistralai/mistral-small-2603}"
       OPENAI_RESPONSE_FORMAT: json_object
       OPENAI_CONNECT_TIMEOUT: 10s
       OPENAI_READ_TIMEOUT: 100s
