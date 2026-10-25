@@ -11,10 +11,11 @@ import {
   sessionEvents,
 } from '@/shared/api'
 
-type PreparationStage = 'idle' | 'pending' | 'preparing' | 'slow'
+type PreparationStage = 'idle' | 'preparing' | 'slow'
 
 interface PrefillAttempt {
   text: string
+  startedAt: number
   generation: number
   controller: AbortController
   timers: ReturnType<typeof setTimeout>[]
@@ -89,7 +90,15 @@ export function useApplicationPrefill({
     },
     retry: false,
     onSuccess: (response, attempt) => {
-      if (finish(attempt)) onSuccess(response, attempt.text)
+      const apply = () => {
+        if (finish(attempt)) onSuccess(response, attempt.text)
+      }
+      const remaining = 3_000 - (performance.now() - attempt.startedAt)
+      if (isCurrent(attempt) && remaining > 0) {
+        attempt.timers.push(setTimeout(apply, remaining))
+      } else {
+        apply()
+      }
     },
     onError: (error, attempt) => {
       if (finish(attempt)) onError(error)
@@ -100,16 +109,14 @@ export function useApplicationPrefill({
     if (active.current || isSessionSwitching()) return
     const attempt: PrefillAttempt = {
       text,
+      startedAt: performance.now(),
       generation: getSessionGeneration(),
       controller: new AbortController(),
       timers: [],
     }
     active.current = attempt
-    setStage('pending')
+    setStage('preparing')
     attempt.timers.push(
-      setTimeout(() => {
-        if (isCurrent(attempt)) setStage('preparing')
-      }, 150),
       setTimeout(() => {
         if (isCurrent(attempt)) setStage('slow')
       }, 8_000),

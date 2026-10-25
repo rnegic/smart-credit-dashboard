@@ -122,6 +122,7 @@ function clock() {
       return id
     },
     clearTimeout: (key) => timers.delete(key),
+    get now() { return now },
     get size() { return timers.size },
     advance(milliseconds) {
       const target = now + milliseconds
@@ -249,6 +250,7 @@ function editor(t, { abortAware = false, localDraft: initialLocal = null, initia
   }
   const globals = {
     AbortController, DOMException, Error, Event,
+    performance: { now: () => time.now },
     setTimeout: time.setTimeout, clearTimeout: time.clearTimeout,
     sessionStorage: {
       getItem: (name) => storage.get(name) ?? null,
@@ -402,7 +404,7 @@ test('empty input still validates, while manual entry needs no preparation reque
   assert.equal(h.requests.length, 0)
 })
 
-test('a double click sends one request and a fast response opens the form without waiting for animation', async (t) => {
+test('a double click sends one request and a fast response waits for three seconds of animation', async (t) => {
   const h = editor(t)
   h.replayEffects()
   h.change('description', description)
@@ -419,10 +421,18 @@ test('a double click sends one request and a fast response opens the form withou
   assert.equal(h.buttons[0].props.disabled, true)
   assert.equal(h.buttons[1].props.disabled, false)
   assert.equal(h.field('description').props.readOnly, true)
-  assert.equal(h.preparation.props.visible, false)
+  assert.equal(h.preparation.props.visible, true)
   h.time.advance(100)
   h.requests[0].resolve(response())
   await settle()
+  h.render()
+  assert.equal(h.modal.props.open, false)
+  assert.equal(h.card.props['aria-busy'], true)
+  h.time.advance(2899)
+  h.render()
+  assert.equal(h.modal.props.open, false)
+  assert.equal(h.preparation.props.visible, true)
+  h.time.advance(1)
   h.render()
   assert.equal(h.modal.props.open, true)
   assert.equal(h.card.props['aria-busy'], false)
@@ -433,15 +443,75 @@ test('a double click sends one request and a fast response opens the form withou
   assert.equal(h.requests.length, 1)
 })
 
-test('preparation appears at 150 ms, adds the slow hint at 8 s and retains the same actions', async (t) => {
+test('IP and OOO wait only for the remainder of three seconds, never after a slower response', async (t) => {
+  for (const legalForm of ['IP', 'OOO']) {
+    for (const duration of [100, 2999, 3000, 3500]) {
+      const h = editor(t, { session: { legalForm } })
+      h.dashboard.data.company.legalForm = legalForm
+      h.render()
+      h.begin()
+      await settle()
+      h.time.advance(duration)
+      const prepared = response()
+      prepared.form.step2_businessData.applicant.type = legalForm
+      h.requests[0].resolve(prepared)
+      await settle()
+      h.render()
+      assert.equal(h.modal.props.open, duration >= 3000, `${legalForm}: ${duration} ms`)
+      if (duration < 3000) {
+        assert.equal(h.preparation.props.visible, true)
+        h.time.advance(3000 - duration)
+        h.render()
+      }
+      assert.equal(h.modal.props.open, true)
+      assert.equal(h.field('amount').props.value, '200000')
+      assert.equal(h.card.props['aria-busy'], false)
+      assert.equal(h.time.size, 0)
+      assert.equal(h.requests.length, 1)
+    }
+  }
+})
+
+test('cancelling a successful response during the minimum display time clears its delayed application', async (t) => {
+  for (const reason of ['manual', 'session', 'scope', 'unmount']) {
+    const h = editor(t)
+    h.begin()
+    await settle()
+    h.time.advance(100)
+    h.requests[0].resolve(response({ amount: 999999 }))
+    await settle()
+    h.render()
+    assert.equal(h.modal.props.open, false)
+    assert.equal(h.card.props['aria-busy'], true)
+    if (reason === 'manual') {
+      h.click(1)
+      h.render()
+      h.change('amount', '700000')
+      h.close()
+    } else if (reason === 'session') h.changeSession()
+    else if (reason === 'scope') h.changeScope()
+    else h.unmount()
+    const before = [...h.storage]
+    assert.equal(h.time.size, 0)
+    assert.equal(h.requests[0].options.signal.aborted, true)
+    h.time.advance(60000)
+    await settle()
+    if (reason !== 'unmount') {
+      h.render()
+      assert.equal(h.modal.props.open, false)
+      assert.equal(h.card.props['aria-busy'], false)
+      assert.equal(h.field('amount').props.value, reason === 'manual' ? '700000' : '')
+    }
+    assert.equal(h.runtimes[0].staleWrites, 0)
+    assert.deepEqual([...h.storage], before)
+  }
+})
+
+test('preparation appears immediately, adds the slow hint at 8 s and retains the same actions', async (t) => {
   const h = editor(t)
   const labels = h.buttons.map((button) => button.props.children)
   h.begin()
   await settle()
-  h.time.advance(149)
-  h.render()
-  assert.equal(h.preparation.props.visible, false)
-  h.time.advance(1)
   h.render()
   assert.equal(h.preparation.props.visible, true)
   assert.equal(h.preparation.props.slow, false)
@@ -449,7 +519,7 @@ test('preparation appears at 150 ms, adds the slow hint at 8 s and retains the s
   assert.equal(h.modal.props.open, false)
   assert.equal(h.live.props['aria-atomic'], 'true')
   assert.equal(elements(h.card).includes(h.live), false)
-  h.time.advance(7849)
+  h.time.advance(7999)
   h.render()
   assert.equal(h.preparation.props.slow, false)
   h.time.advance(1)
@@ -557,6 +627,7 @@ test('settling an abandoned request cannot stop or apply data over a newer attem
     assert.equal(h.invalidations.length, 0)
     h.requests[1].resolve(response({ amount: 300000 }))
     await settle()
+    h.time.advance(2850)
     h.render()
     assert.equal(h.modal.props.open, true)
     assert.equal(h.field('amount').props.value, '300000')
@@ -711,6 +782,7 @@ test('partial data preserves the source description, missing annotations and aut
     await settle()
     h.requests[0].resolve(response({ businessTask, amount: null }, ['step1_financingParameters.amount']))
     await settle()
+    h.time.advance(3000)
     h.render()
     assert.equal(h.modal.props.open, true)
     assert.equal(h.field('description').props.value, description)
@@ -732,6 +804,7 @@ test('preparation never saves a server draft; Continue preserves submission sema
   const prepared = response()
   h.requests[0].resolve(prepared)
   await settle()
+  h.time.advance(3000)
   h.render()
   assert.equal(h.requests.length, 1)
   h.next()
@@ -1046,6 +1119,7 @@ test('a prefill without registry date can reach review and submit without editin
   prepared.form.step2_businessData.applicant.registrationDate = null
   h.requests[0].resolve(prepared)
   await settle()
+  h.time.advance(3000)
   h.render()
   h.next()
   assert.equal((await h.resolveDraft()).form.step2_businessData.applicant.registrationDate, null)
@@ -1259,6 +1333,7 @@ test('prefill contacts and their automatic or missing annotations override unuse
     await settle()
     h.requests[0].resolve(prepared)
     await settle()
+    h.time.advance(3000)
     h.render()
     h.next()
     await h.resolveDraft()
