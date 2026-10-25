@@ -50,7 +50,7 @@ function Navigation({ onNavigate }: NavigationProps) {
           }
         >
           <Icon aria-hidden="true" />
-          <Typography.Text view="primary-small" weight="medium">
+           <Typography.Text className={styles.navText} view="primary-small" weight="medium">
             {label}
           </Typography.Text>
           {path === ROUTES.applications &&

@@ -120,7 +120,11 @@
   color: var(--color-light-text-secondary);
 }
 
-.navLink > :last-child:not(svg) {
+.navText {
+  min-inline-size: 0;
+}
+
+.navLink > :last-child:not(.navText):not(svg) {
   flex-shrink: 0;
 }
 
