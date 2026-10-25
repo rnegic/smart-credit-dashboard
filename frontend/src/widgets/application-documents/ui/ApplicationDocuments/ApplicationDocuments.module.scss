@@ -15,26 +15,53 @@
   gap: var(--gap-12);
 }
 
-.list {
-  flex: 1;
+.package {
+  display: grid;
+  gap: var(--gap-16);
+  min-inline-size: 0;
+}
+
+.package + .package {
+  padding-block-start: var(--gap-24);
+  border-block-start: 1px solid var(--color-light-neutral-translucent-200);
+}
+
+.packageHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-16);
+}
+
+.packageInfo {
+  display: grid;
+  gap: var(--gap-4);
+  min-inline-size: 0;
+}
+
+.packageTitle,
+.note,
+.footerNote {
+  margin: var(--gap-0);
+  overflow-wrap: anywhere;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gap-4);
+}
+
+.status svg {
+  inline-size: var(--gap-16);
+  block-size: var(--gap-16);
+}
+
+.documents {
   margin: var(--gap-0);
   padding: var(--gap-0);
   list-style: none;
-}
-
-.document {
-  display: flex;
-  align-items: center;
-  gap: var(--gap-12);
-  padding-block: var(--gap-12);
-}
-
-.document:first-child {
-  padding-block-start: var(--gap-0);
-}
-
-.document:last-child {
-  padding-block-end: var(--gap-0);
 }
 
 .document + .document {
@@ -42,51 +69,41 @@
 }
 
 .documentIcon {
-  display: grid;
-  flex-shrink: 0;
-  place-items: center;
-  inline-size: var(--gap-40);
-  block-size: var(--gap-40);
-  border-radius: var(--border-radius-12);
-  background: var(--color-light-base-bg-secondary);
   color: var(--color-light-text-secondary);
 }
 
-.documentText {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: var(--gap-4);
-  min-inline-size: 0;
-  overflow-wrap: anywhere;
+.loading {
+  display: grid;
+  gap: var(--gap-16);
 }
 
-.received {
+.packageFooter {
   display: flex;
   align-items: center;
-  gap: var(--gap-4);
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--gap-16);
+}
+
+.footerNote {
+  flex: 1 1 16rem;
+}
+
+.empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--gap-16);
+  padding-block: var(--gap-32);
+  text-align: center;
+}
+
+.empty > svg {
+  inline-size: var(--gap-40);
+  block-size: var(--gap-40);
   color: var(--color-light-text-secondary);
 }
 
-.received svg {
-  inline-size: var(--gap-12);
-  block-size: var(--gap-12);
-  color: var(--color-light-status-positive);
-}
-
-.documentDetails {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-20);
-  padding-block: var(--gap-16) var(--gap-32);
-}
-
-@media (max-width: 37.49rem) {
-  .document {
-    flex-wrap: wrap;
-  }
-
-  .document > button {
-    margin-inline-start: calc(var(--gap-40) + var(--gap-12));
-  }
+@media (max-width: 47.99rem) {
+  .card { padding: var(--gap-20); }
+  .packageFooter > button { inline-size: 100%; }
 }
