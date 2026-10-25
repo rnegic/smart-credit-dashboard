@@ -1,5 +1,11 @@
 package alfa.smartcredit.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-public record LoginRequest(@NotBlank String login, @NotBlank String password) {}
+@Schema(description = "Учётные данные для входа")
+public record LoginRequest(
+        @Schema(description = "Логин пользователя", example = "demo_ip_approved")
+        @NotBlank String login,
+        @Schema(description = "Пароль", example = "demo123")
+        @NotBlank String password) {}

@@ -7,6 +7,10 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+    properties:
+      # springdoc приносит Jackson 2, поэтому явно оставляем для JSON-полей Hibernate Jackson 3,
+      # которым пользуется Spring Boot 4: иначе JsonNode (tools.jackson) не десериализуется.
+      hibernate.type.json_format_mapper: org.hibernate.type.format.jackson.Jackson3JsonFormatMapper
   flyway:
     enabled: true
   jackson:
@@ -15,6 +19,16 @@ server:
   servlet:
     session:
       timeout: 2h
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    display-request-duration: true
+    persist-authorization: true
+  paths-to-match: /api/**
 app:
   cors:
     allowed-origin: http://localhost:5173
