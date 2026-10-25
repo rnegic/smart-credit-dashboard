@@ -60,10 +60,14 @@ export function DemoLogin() {
   const error = login.error ?? transition.error
   const badCredentials =
     error instanceof ApiError && error.code === 'BAD_CREDENTIALS'
-  const newIp = profiles.data?.find((profile) => profile.login === 'client_ip')
-  const newOoo = profiles.data?.find(
-    (profile) => profile.login === 'client_ooo',
-  )
+  // Стартовые аккаунты могут быть скрыты из списка демо-профилей.
+  // Тогда для быстрого входа берём первый доступный ИП/ООО-сценарий.
+  const newIp =
+    profiles.data?.find((profile) => profile.login === 'client_ip') ??
+    profiles.data?.find((profile) => profile.login.startsWith('demo_ip'))
+  const newOoo =
+    profiles.data?.find((profile) => profile.login === 'client_ooo') ??
+    profiles.data?.find((profile) => profile.login.startsWith('demo_ooo'))
   const officer = profiles.data?.find(
     (profile) => profile.role === 'BANK_OFFICER',
   )
@@ -71,8 +75,8 @@ export function DemoLogin() {
     profiles.data?.filter(
       (profile) =>
         profile.role === 'CLIENT' &&
-        profile.login !== 'client_ip' &&
-        profile.login !== 'client_ooo',
+        profile.login !== newIp?.login &&
+        profile.login !== newOoo?.login,
     ) ?? []
 
   function quickLogin(profile: NonNullable<typeof officer>) {
