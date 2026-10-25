@@ -30,7 +30,7 @@
   --paper-padding: var(--gap-20);
   --paper-gap: var(--gap-16);
   --caption-size: var(--gap-16);
-  --field-size: var(--gap-40);
+  --field-size: var(--gap-64);
   --field-padding: var(--gap-8);
   --source-row-size: var(--field-size);
   --row-gap: var(--gap-8);
@@ -49,7 +49,7 @@
   inline-size: 100%;
   min-block-size: calc(
     var(--paper-padding) * 2 + var(--caption-size) + var(--paper-gap) +
-      var(--field-size) * 3 + var(--row-gap) * 2 + var(--gap-16)
+      var(--field-size) * 4 + var(--row-gap) * 3 + var(--gap-16)
   );
 }
 
@@ -182,7 +182,7 @@
 
 .field {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) var(--gap-24);
   align-items: center;
   gap: var(--gap-8);
   min-block-size: var(--field-size);
@@ -205,7 +205,7 @@
   );
   inset-block-end: var(--paper-padding);
   inset-inline: var(--gap-0);
-  grid-template-rows: repeat(3, var(--source-row-size));
+  grid-template-rows: repeat(4, var(--source-row-size));
   align-content: start;
   overflow: clip;
   pointer-events: none;
@@ -249,6 +249,12 @@
 .field:nth-child(3),
 .flight:nth-child(3) {
   --row-delay: 0.4s;
+}
+
+.sourceRow:nth-child(4),
+.field:nth-child(4),
+.flight:nth-child(4) {
+  --row-delay: 0.6s;
 }
 
 .explanation {
@@ -345,7 +351,7 @@
   .illustration {
     --paper-padding: var(--gap-12);
     --paper-gap: var(--gap-8);
-    --field-size: var(--gap-32);
+    --field-size: var(--gap-64);
     --field-padding: var(--gap-4);
     --source-row-size: var(--gap-8);
     --bridge-size: var(--gap-24);
@@ -354,14 +360,14 @@
     --signal-y: calc(var(--bridge-size) - var(--gap-12));
     --sheet-shift: calc(
       var(--paper-padding) * 2 + var(--caption-size) + var(--paper-gap) +
-        var(--source-row-size) * 3 + var(--row-gap) * 2 + var(--bridge-size)
+        var(--source-row-size) * 4 + var(--row-gap) * 3 + var(--bridge-size)
     );
   }
 
   .visualSlot {
     min-block-size: calc(
       var(--sheet-shift) + var(--paper-padding) * 2 + var(--caption-size) +
-        var(--paper-gap) + var(--field-size) * 3 + var(--row-gap) * 2 + var(--gap-16)
+        var(--paper-gap) + var(--field-size) * 4 + var(--row-gap) * 3 + var(--gap-16)
     );
   }
 
@@ -399,6 +405,12 @@
   .illustration .flight:nth-child(3) {
     --flight-drop: calc(
       var(--sheet-shift) + (var(--field-size) - var(--source-row-size)) * 2.5
+    );
+  }
+
+  .illustration .flight:nth-child(4) {
+    --flight-drop: calc(
+      var(--sheet-shift) + (var(--field-size) - var(--source-row-size)) * 3.5
     );
   }
 

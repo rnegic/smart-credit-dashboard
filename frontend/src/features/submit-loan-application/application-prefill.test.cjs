@@ -88,7 +88,7 @@ function response(financing = {}, missingFields = []) {
     form: {
       applicationId: null, createdAt: '2026-10-01T12:00:00Z', status: 'DRAFT',
       step1_financingParameters: {
-        businessTask: 'Подготовленное описание', amount: 200000, termDays: 60,
+        businessTask: 'Подготовленное описание', amount: 200000, termDays: 60, contractTermMonths: 12,
         purpose: 'Закупка товара', ...financing,
       },
       step2_businessData: {
@@ -107,7 +107,7 @@ function response(financing = {}, missingFields = []) {
       },
       meta: { formVersion: '1.3', events: ['form_started'] },
     },
-    aiFilled: ['step1_financingParameters.amount', 'step1_financingParameters.termDays', 'step2_businessData.financials.monthlyRevenue'],
+    aiFilled: ['step1_financingParameters.amount', 'step1_financingParameters.termDays', 'step1_financingParameters.contractTermMonths', 'step2_businessData.financials.monthlyRevenue'],
     missingFields,
   }
 }
@@ -787,7 +787,8 @@ test('partial data preserves the source description, missing annotations and aut
     assert.equal(h.modal.props.open, true)
     assert.equal(h.field('description').props.value, description)
     assert.equal(h.field('amount').props.error, 'Заполните поле')
-    assert.equal(h.field('termDays').props.hint, 'Заполнено автоматически, проверьте')
+    assert.match(h.field('termDays').props.hint, /Заполнено автоматически, проверьте/)
+    assert.match(h.field('termDays').props.hint, /Фактический срок выбирается при получении каждого транша, а ставку определяет сервер/)
     assert.ok(h.html().includes(partialMessage))
     assert.ok(!h.html().includes('Заполнено ИИ, проверьте'))
     h.next()
@@ -818,6 +819,7 @@ test('preparation never saves a server draft; Continue preserves submission sema
   assert.equal(saved.revision, null)
   assert.equal(saved.form.step1_financingParameters.businessTask, description.trim())
   assert.equal(saved.form.step1_financingParameters.termDays, 60)
+  assert.equal(saved.form.step1_financingParameters.contractTermMonths, 12)
   assert.deepEqual(saved.aiFilled, prepared.aiFilled)
   assert.deepEqual(saved.missingFields, prepared.missingFields)
   assert.deepEqual(saved.form.step3_verification.consents, prepared.form.step3_verification.consents)
@@ -830,6 +832,208 @@ test('preparation never saves a server draft; Continue preserves submission sema
   assert.equal(business.props.value.fnsRequest, false)
 })
 
+test('submission accepts only 6, 12 or 24 contract months, independently of tranche days', () => {
+  const schema = formEntity.applicationFormSubmissionSchema.shape.step1_financingParameters
+  const financing = response().form.step1_financingParameters
+  for (const contractTermMonths of [6, 12, 24]) {
+    for (const termDays of [30, 60, 90]) {
+      const parsed = schema.parse({ ...financing, termDays, contractTermMonths })
+      assert.equal(parsed.contractTermMonths, contractTermMonths)
+      assert.equal(parsed.termDays, termDays)
+    }
+  }
+  for (const contractTermMonths of [undefined, null, '', '12', 0, -6, 3, 18, 30, 60, 90, 6.5, NaN]) {
+    const result = schema.safeParse({ ...financing, contractTermMonths })
+    assert.equal(result.success, false, String(contractTermMonths))
+    assert.ok(result.error.issues.some((issue) => issue.path[0] === 'contractTermMonths'))
+    assert.match(result.error.issues[0].message, /Выберите срок договора 6, 12 или 24 месяца/)
+  }
+})
+
+test('IP and OOO start with empty terms, require a contract term and save every allowed selection', async (t) => {
+  for (const legalForm of ['IP', 'OOO']) {
+    for (const months of [6, 12, 24]) {
+      const h = editor(t, { session: { legalForm } })
+      h.dashboard.data.company.legalForm = legalForm
+      h.render()
+      h.click(1)
+      h.render()
+      const contract = h.field('contractTermMonths').props
+      assert.equal(contract.selected, null)
+      assert.equal(contract.label, 'Срок договора')
+      assert.equal(contract.fieldProps['aria-required'], true)
+      assert.deepEqual(plain(contract.options), [
+        { key: '6', content: '6 месяцев' },
+        { key: '12', content: '12 месяцев' },
+        { key: '24', content: '24 месяцев' },
+      ])
+      assert.equal(h.field('termDays').props.selected, null)
+      assert.equal(h.field('termDays').props.label, 'Ориентировочный срок транша')
+      assert.equal(h.field('termDays').props.fieldProps['aria-required'], true)
+      assert.match(h.field('termDays').props.hint, /при получении каждого транша/)
+      assert.equal(h.field('amount').props.value, '')
+      assert.equal(h.field('amount').props.label, 'Лимит договора, ₽')
+      assert.match(h.field('amount').props.hint, /Общая сумма всех траншей за весь срок договора/)
+      assert.match(h.field('amount').props.hint, /Погашение траншей не восстанавливает лимит/)
+      h.change('amount', '200000')
+      h.change('termDays', '60')
+      h.change('purpose', legalForm === 'OOO' ? 'SUPPLIERS' : 'Закупка товара')
+      h.next()
+      await settle()
+      h.render()
+      assert.equal(h.requests.length, 0)
+      assert.equal(h.field('contractTermMonths').props.error, 'Выберите срок договора 6, 12 или 24 месяца')
+      h.change('contractTermMonths', String(months))
+      h.next()
+      const saved = await h.resolveDraft()
+      assert.equal(saved.form.step1_financingParameters.contractTermMonths, months)
+      assert.equal(saved.form.step1_financingParameters.termDays, 60)
+      assert.equal(JSON.parse(h.storage.get('application-draft:1')).contractTermMonths, String(months))
+    }
+  }
+})
+
+test('invalid persisted contract terms remain unguessed and cannot skip financing validation', (t) => {
+  for (const value of ['18', '90', '12.5', 'not a term']) {
+    const local = { ...readyLocalDraft(), contractTermMonths: value }
+    const h = editor(t, { localDraft: local })
+    h.resume()
+    assert.equal(h.field('contractTermMonths').props.selected, value)
+    assert.equal(h.field('amount').props.value, local.amount)
+    h.next()
+    h.render()
+    assert.equal(h.requests.length, 0)
+    assert.equal(h.field('contractTermMonths').props.error, 'Выберите срок договора 6, 12 или 24 месяца')
+    assert.equal(JSON.parse(h.storage.get('application-draft:1')).ipEdits.existingDebt, '0')
+  }
+  const initialDraft = formEntity.applicationDraftSchema.parse({
+    form: response({ contractTermMonths: 18 }).form, currentStep: 3,
+    aiFilled: [], missingFields: [], revision: 2, updatedAt: '2026-10-23T12:00:00Z',
+  })
+  const h = editor(t, { initialDraft })
+  h.resume()
+  assert.equal(h.field('contractTermMonths').props.selected, '18')
+  h.next()
+  h.render()
+  assert.equal(h.requests.length, 0)
+  assert.equal(h.field('contractTermMonths').props.error, 'Выберите срок договора 6, 12 или 24 месяца')
+})
+
+test('AI contract terms and missing annotations reach the selector and persist without guessing', async (t) => {
+  const path = 'step1_financingParameters.contractTermMonths'
+  for (const months of [6, 12, 24, null, undefined]) {
+    const h = editor(t)
+    const prepared = response({ contractTermMonths: months }, months == null ? [path] : [])
+    if (months == null) prepared.aiFilled = prepared.aiFilled.filter((field) => field !== path)
+    h.begin()
+    await settle()
+    h.requests[0].resolve(prepared)
+    await settle()
+    h.time.advance(3000)
+    h.render()
+    const contract = h.field('contractTermMonths').props
+    assert.equal(contract.selected, months == null ? null : String(months))
+    assert.equal(contract.error, months == null ? 'Заполните поле' : undefined)
+    if (months == null) {
+      assert.doesNotMatch(contract.hint, /Заполнено автоматически/)
+      h.next()
+      await settle()
+      h.render()
+      assert.equal(h.requests.length, 1)
+      h.change('contractTermMonths', '24')
+    } else {
+      assert.match(contract.hint, /Заполнено автоматически, проверьте/)
+    }
+    h.next()
+    const saved = await h.resolveDraft()
+    assert.equal(saved.form.step1_financingParameters.contractTermMonths, months ?? 24)
+    assert.deepEqual(saved.aiFilled, prepared.aiFilled)
+    assert.deepEqual(saved.missingFields, prepared.missingFields)
+  }
+})
+
+test('historical local and server drafts without contract months reopen financing without losing other data', async (t) => {
+  for (const source of ['local', 'local-server-form', 'server']) {
+    const form = response().form
+    delete form.step1_financingParameters.contractTermMonths
+    const initialDraft = formEntity.applicationDraftSchema.parse({
+      form, currentStep: 3, aiFilled: [], missingFields: [], revision: 4,
+      updatedAt: '2026-10-23T12:00:00Z',
+    })
+    assert.equal(initialDraft.form.step1_financingParameters.contractTermMonths, null)
+    const local = readyLocalDraft()
+    delete local.contractTermMonths
+    if (source === 'local-server-form') local.serverForm = form
+    const h = editor(t, source === 'server' ? { initialDraft } : { localDraft: local })
+    h.resume()
+    assert.equal(h.field('contractTermMonths').props.selected, null)
+    assert.equal(h.field('termDays').props.selected, '60')
+    assert.equal(h.field('amount').props.value, '200000')
+    assert.equal(h.field('purpose').props.value, 'Закупка товара')
+    assert.ok(h.html().includes('Остальные данные сохранены.'))
+    assert.ok(!h.html().includes('повторно укажите ежемесячный платеж'))
+    assert.equal(JSON.parse(h.storage.get('application-draft:1')).contractTermMonths, '')
+    h.change('contractTermMonths', '12')
+    h.next()
+    const saved = await h.resolveDraft()
+    assert.equal(saved.form.step1_financingParameters.contractTermMonths, 12)
+    assert.equal(saved.form.step2_businessData.financials.monthlyRevenue, 500000)
+    assert.equal(saved.form.step2_businessData.financials.existingDebt, 0)
+    assert.equal(h.ip.props.value.existingDebt, '0')
+  }
+})
+
+test('IP and OOO review distinguish the cumulative limit and both terms and submit the selected contract', async (t) => {
+  for (const legalForm of ['IP', 'OOO']) {
+    const form = response().form
+    form.step2_businessData.externalData = null
+    form.step3_verification.consents = {
+      personalData: true, bkiRequest: true, fnsRequest: true, acceptedAt: '2026-10-01T12:00:00Z',
+    }
+    if (legalForm === 'OOO') {
+      Object.assign(form.step2_businessData.applicant, {
+        type: 'OOO', companyName: 'ООО Тест', inn: '1234567890', ogrn: '1234567890123', kpp: '123456789',
+      })
+      Object.assign(form.step2_businessData.financials, {
+        annualRevenue: 6000000, averageEmployeeCount: 4, otherMonthlyObligations: 0,
+      })
+      form.meta.events.push('ooo_step_v2_3')
+    }
+    const initialDraft = formEntity.applicationDraftSchema.parse({
+      form, currentStep: legalForm === 'OOO' ? 2 : 3, aiFilled: [], missingFields: [], revision: 4,
+      updatedAt: '2026-10-23T12:00:00Z',
+    })
+    const h = editor(t, { initialDraft, session: { legalForm } })
+    Object.assign(h.dashboard.data.company, {
+      legalForm, name: form.step2_businessData.applicant.companyName, inn: form.step2_businessData.applicant.inn,
+    })
+    h.render()
+    assert.ok(h.html().includes('Лимит договора 200000'))
+    assert.ok(h.html().includes('Срок договора 12 мес.'))
+    h.resume()
+    assert.equal(h.field('reviewAmount').props['aria-label'], 'Лимит договора, ₽')
+    assert.equal(h.field('reviewContractTermMonths').props.label, 'Срок договора')
+    assert.equal(h.field('reviewContractTermMonths').props.fieldProps['aria-required'], true)
+    assert.equal(h.field('reviewTermDays').props.label, 'Ориентировочный срок транша')
+    assert.equal(h.field('reviewTermDays').props.fieldProps['aria-required'], true)
+    assert.match(h.field('reviewTermDays').props.hint, /Фактический срок выбирается при получении каждого транша, а ставку определяет сервер/)
+    const limitLabel = h.find((item) => item.props.text === 'Лимит договора, ₽')
+    assert.match(limitLabel.props.hint, /Погашение траншей не восстанавливает лимит/)
+    h.change('reviewContractTermMonths', '24')
+    h.change('reviewTermDays', '90')
+    h.change('reviewAmount', '300000')
+    h.next()
+    await settle()
+    assert.equal(h.requests.length, 1, legalForm)
+    assert.equal(h.requests[0].url, '/api/applications')
+    const submitted = JSON.parse(h.requests[0].options.body)
+    assert.equal(submitted.step1_financingParameters.contractTermMonths, 24)
+    assert.equal(submitted.step1_financingParameters.termDays, 90)
+    assert.equal(submitted.step1_financingParameters.amount, 300000)
+    assert.equal(submitted.step2_businessData.applicant.type, legalForm)
+  }
+})
+
 test('preparation is a decorative, token-styled composition with reserved space and reduced motion', () => {
   const view = ApplicationPreparation({ visible: true, slow: false, headingTag: 'h2' })
   const visual = elements(view).find((item) => item.type === ApplicationPreparationVisual)
@@ -837,10 +1041,10 @@ test('preparation is a decorative, token-styled composition with reserved space 
   const graphic = ApplicationPreparationVisual()
   assert.equal(graphic.props['aria-hidden'], 'true')
   assert.equal(graphic.props['data-active'], true)
-  assert.equal(elements(graphic).filter((item) => item.props.className === 'traveller').length, 3)
+  assert.equal(elements(graphic).filter((item) => item.props.className === 'traveller').length, 4)
   const html = renderToStaticMarkup(view)
   assert.ok(html.includes('<h2>Готовим вашу заявку</h2>'))
-  for (const label of ['Сумма', 'Срок', 'Цель']) assert.ok(html.includes(label))
+  for (const label of ['Лимит договора', 'Срок договора', 'Ориентировочный срок транша', 'Цель']) assert.ok(html.includes(label))
   assert.ok(!html.includes('style='))
   const text = html.replace(/<[^>]+>/g, '')
   assert.ok(text.includes('Обработка в среднем занимает 10 секунд.'))
@@ -872,8 +1076,9 @@ test('the initial screen has no illustration and keeps the actual term restricti
   assert.ok(!h.html().includes('class="illustration"'))
   assert.equal(h.buttons[0].props.children, 'Подготовить заявку')
   assert.ok(h.find((item) => item.type === 'header' && item.props.className === 'intentHeader'))
-  assert.ok(h.html().includes('Срок транша: только 30, 60 или 90 дней.'))
-  assert.ok(h.html().includes('Это не срок всего договора.'))
+  assert.ok(h.html().includes('Срок договора: 6, 12 или 24 месяца.'))
+  assert.ok(h.html().includes('Ориентировочный срок транша: 30, 60 или 90 дней.'))
+  assert.ok(h.html().includes('Укажите оба срока в описании.'))
   assert.equal(h.field('description').props['aria-label'], 'Ваша бизнес-задача')
   assert.match(h.field('description').props['aria-describedby'], /intent-help .*intent-terms/)
   const inactive = ApplicationPreparation({ visible: false, slow: false, headingTag: 'h2' })
@@ -1035,7 +1240,7 @@ test('external scoring overrides are persisted in the draft and submitted', asyn
 
 function readyLocalDraft(ipEdits = {}, currentStep = 3, externalEdits = {}) {
   return {
-    description, amount: '200000', termDays: '60', purpose: 'Закупка товара',
+    description, amount: '200000', termDays: '60', contractTermMonths: '12', purpose: 'Закупка товара',
     currentStep, started: true, revision: null, serverForm: null,
     acceptedAt: '2026-10-01T12:00:00Z', externalEdits,
     ipEdits: {
@@ -1150,6 +1355,7 @@ test('manual entry uses a registry date returned by draft save without inventing
   h.render()
   h.change('amount', '200000')
   h.change('termDays', '60')
+  h.change('contractTermMonths', '12')
   h.change('purpose', 'Закупка товара')
   h.next()
   const first = await h.resolveDraft('2016-04-12')
@@ -1242,6 +1448,7 @@ test('manual entry uses exact session contacts without an AI request and keeps t
   h.render()
   h.change('amount', '200000')
   h.change('termDays', '60')
+  h.change('contractTermMonths', '12')
   h.change('purpose', 'Закупка товара')
   h.next()
   const snapshot = await h.resolveDraft()
@@ -1309,6 +1516,7 @@ test('manual fallback after unavailable prefill still uses session contacts', as
   assert.ok(h.html().includes(fallbackMessage))
   h.change('amount', '200000')
   h.change('termDays', '60')
+  h.change('contractTermMonths', '12')
   h.change('purpose', 'Закупка товара')
   h.next()
   const snapshot = await h.resolveDraft()
@@ -1354,7 +1562,7 @@ test('prefill contacts and their automatic or missing annotations override unuse
 
 function submittedApplication() {
   return {
-    id: 51, amount: 200000, termDays: 60, rate: 24.75, purpose: 'Закупка товара',
+    id: 51, amount: 200000, termDays: 60, contractTermMonths: 12, rate: 24.75, purpose: 'Закупка товара',
     businessTask: description.trim(), companyName: 'ИП Тестовый Предприниматель', inn: '123456789012', legalForm: 'IP',
     status: 'IN_REVIEW', decision: null, finalRate: null, offer: null, recommendation: null,
     internalScore: 85, riskClass: 'A', aiComment: null, officerComment: null, scoring: null,

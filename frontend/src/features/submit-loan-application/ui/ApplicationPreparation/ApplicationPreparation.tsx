@@ -22,7 +22,7 @@ export function ApplicationPreparationVisual() {
           <span>Описание</span>
         </div>
         <div className={styles.sourceRows}>
-          {['amount', 'term', 'purpose'].map((field) => (
+          {['amount', 'contractTerm', 'trancheTerm', 'purpose'].map((field) => (
             <div className={styles.sourceRow} key={field}>
               <span className={styles.sourceLine} />
             </div>
@@ -39,7 +39,12 @@ export function ApplicationPreparationVisual() {
           <span>Анкета</span>
         </div>
         <div className={styles.formRows}>
-          {['Сумма', 'Срок', 'Цель'].map((label) => (
+          {[
+            'Лимит договора',
+            'Срок договора',
+            'Ориентировочный срок транша',
+            'Цель',
+          ].map((label) => (
             <div className={styles.field} key={label}>
               <span>{label}</span>
               <i className={styles.fieldLine} />
@@ -48,7 +53,7 @@ export function ApplicationPreparationVisual() {
         </div>
       </div>
       <div className={styles.flights}>
-        {['amount', 'term', 'purpose'].map((field) => (
+        {['amount', 'contractTerm', 'trancheTerm', 'purpose'].map((field) => (
           <div className={styles.flight} key={field}>
             <span className={styles.traveller} />
           </div>
