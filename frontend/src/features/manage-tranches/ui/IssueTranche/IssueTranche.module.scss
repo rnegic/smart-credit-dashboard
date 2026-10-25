@@ -1,0 +1,10 @@
+.form {
+  display: grid;
+  gap: var(--gap-24);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.form p {
+  margin: var(--gap-0);
+}
