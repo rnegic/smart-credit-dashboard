@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { contractTermMonthsSchema } from '@/entities/loan-application'
 
 const commentSchema = z
   .string()
@@ -40,8 +41,8 @@ export const decisionSchema = z.discriminatedUnion('action', [
         .pipe(
           z
             .number()
-            .min(50_000, 'Минимальная сумма 50 000 ₽')
-            .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
+            .min(50_000, 'Минимальный лимит 50 000 ₽')
+            .max(20_000_000, 'Максимальный лимит 20 000 000 ₽'),
         )
         .optional(),
     ),
@@ -51,6 +52,15 @@ export const decisionSchema = z.discriminatedUnion('action', [
           error: 'Выберите срок 30, 60 или 90 дней',
         })
         .transform(Number)
+        .optional(),
+    ),
+    contractTermMonths: optionalInputSchema.pipe(
+      z
+        .enum(['6', '12', '24'], {
+          error: 'Выберите срок договора 6, 12 или 24 месяца',
+        })
+        .transform(Number)
+        .pipe(contractTermMonthsSchema)
         .optional(),
     ),
     finalRate: optionalRateSchema,

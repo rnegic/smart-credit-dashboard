@@ -52,6 +52,7 @@ function offerVersion(
         offer.id,
         offer.amount,
         offer.termDays,
+        offer.contractTermMonths,
         offer.finalRate,
         offer.monthlyPayment,
         offer.validUntil,
@@ -235,7 +236,9 @@ export function AcceptOffer({
         ? sign.variables.offer
         : offer
   const heading = accepted
-    ? 'Условия приняты'
+    ? application.status === 'ACCEPTED'
+      ? 'Договор подписан'
+      : 'Условия приняты'
     : confirm
       ? 'Подтвердите условия предложения'
       : 'Ваш следующий шаг для бизнеса'
@@ -376,7 +379,9 @@ export function AcceptOffer({
           <div className={styles.intro}>
             <span className={accepted ? styles.accepted : styles.waiting}>
               {accepted
-                ? 'Принято'
+                ? application.status === 'ACCEPTED'
+                  ? 'Договор подписан'
+                  : 'Условия приняты'
                 : expired
                   ? 'Срок предложения истёк'
                   : application.status !== 'OFFER_READY'
@@ -389,7 +394,7 @@ export function AcceptOffer({
             {accepted ? (
               <p role="status">
                 {application.status === 'ACCEPTED'
-                  ? 'Оформление завершено. Результат подписания доступен в документах.'
+                  ? 'Договор подписан. Результат подписания доступен в документах. Транши оформляются отдельно: подписание не означает выдачу денег.'
                   : 'Следующий этап: проверьте и подпишите два документа. Принятие условий не заменяет подпись.'}
               </p>
             ) : (
@@ -413,26 +418,45 @@ export function AcceptOffer({
             <>
               <dl className={styles.terms}>
                 <div className={styles.principal}>
-                  <dt>Сумма предложения</dt>
+                  <dt>Лимит договора</dt>
                   <dd>{formatMoney(displayOffer.amount, { exact: true })}</dd>
                 </div>
                 <div>
-                  <dt>Срок</dt>
+                  <dt>Срок договора</dt>
+                  <dd>{displayOffer.contractTermMonths === null
+                    ? 'Не указан'
+                    : `${displayOffer.contractTermMonths} мес.`}</dd>
+                </div>
+                <div>
+                  <dt>Ориентировочный срок транша</dt>
                   <dd>{displayOffer.termDays} дней</dd>
                 </div>
                 <div>
-                  <dt>Итоговая ставка</dt>
+                  <dt>Ставка для ориентировочного транша</dt>
                   <dd>
                     {String(displayOffer.finalRate).replace('.', ',')}%{' '}
                     <span>годовых</span>
                   </dd>
                 </div>
                 <div className={styles.payment}>
-                  <dt>Ежемесячный платёж</dt>
+                  <dt>Пример ежемесячного платежа</dt>
                   <dd>
                     {formatMoney(displayOffer.monthlyPayment, { exact: true })}
+                    <span>Если взять весь лимит одним траншем на {displayOffer.termDays} дней</span>
                   </dd>
                 </div>
+                {displayOffer.contractStart !== null && (
+                  <div>
+                    <dt>Начало договора</dt>
+                    <dd><time dateTime={displayOffer.contractStart}>{formatDate(displayOffer.contractStart)}</time></dd>
+                  </div>
+                )}
+                {displayOffer.contractEnd !== null && (
+                  <div>
+                    <dt>Окончание договора</dt>
+                    <dd><time dateTime={displayOffer.contractEnd}>{formatDate(displayOffer.contractEnd)}</time></dd>
+                  </div>
+                )}
               </dl>
               {officerComment?.trim() && (
                 <section
@@ -452,32 +476,43 @@ export function AcceptOffer({
                 >
                   <h3 id={`${id}-comparison`}>Относительно вашей заявки</h3>
                   {displayOffer.amount !== application.amount ||
+                   displayOffer.contractTermMonths !== application.contractTermMonths ||
                   displayOffer.termDays !== application.termDays ? (
                     <dl>
                       {displayOffer.amount !== application.amount && (
                         <div>
                           <dt>
-                            Запрашивали{' '}
+                            Запрошенный лимит:{' '}
                             {formatMoney(application.amount, { exact: true })}
                           </dt>
                           <dd>
-                            Банк предлагает{' '}
+                            Лимит предложения:{' '}
                             {formatMoney(displayOffer.amount, { exact: true })}
                           </dd>
                         </div>
                       )}
+                      {displayOffer.contractTermMonths !== application.contractTermMonths && (
+                        <div>
+                          <dt>Запрошенный срок договора: {application.contractTermMonths === null
+                            ? 'не указан'
+                            : `${application.contractTermMonths} мес.`}</dt>
+                          <dd>Срок договора предложения: {displayOffer.contractTermMonths === null
+                            ? 'не указан'
+                            : `${displayOffer.contractTermMonths} мес.`}</dd>
+                        </div>
+                      )}
                       {displayOffer.termDays !== application.termDays && (
                         <div>
-                          <dt>Запрошенный срок: {application.termDays} дней</dt>
-                          <dd>Банк предлагает: {displayOffer.termDays} дней</dd>
+                          <dt>Ориентировочный срок транша в заявке: {application.termDays} дней</dt>
+                          <dd>Ориентировочный срок транша предложения: {displayOffer.termDays} дней</dd>
                         </div>
                       )}
                     </dl>
                   ) : (
                     <p>
                       {application.decision === 'ALTERNATIVE_OFFER'
-                        ? 'Банк предложил другие условия. Сумма и срок сохранены; проверьте итоговую ставку'
-                        : 'Сумма и срок соответствуют заявке'}
+                        ? 'Банк предложил другие условия. Лимит и сроки сохранены; проверьте ставку для ориентировочного транша'
+                        : 'Лимит, срок договора и ориентировочный срок транша соответствуют заявке'}
                     </p>
                   )}
                 </section>

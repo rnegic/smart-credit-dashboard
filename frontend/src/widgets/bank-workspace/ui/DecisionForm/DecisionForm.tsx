@@ -11,6 +11,7 @@ import { useMutation } from '@tanstack/react-query'
 import {
   commentSuggestionSchema,
   type BankApplicationView,
+  type ContractTermMonths,
 } from '@/entities/loan-application'
 import { apiRequest } from '@/shared/api'
 import { formatMoney } from '@/shared/lib'
@@ -28,7 +29,7 @@ export interface DecisionFormProps {
 const actions = [
   {
     value: 'APPROVE',
-    label: 'Одобрить запрошенные сумму и срок',
+    label: 'Одобрить запрошенные лимит и сроки',
     Icon: CheckmarkMIcon,
   },
   {
@@ -44,12 +45,18 @@ const termOptions = [30, 60, 90].map((days) => ({
   content: `${days} дней`,
 }))
 
-type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'finalRate'
+const contractTermOptions = [6, 12, 24].map((months) => ({
+  key: String(months),
+  content: `${months} мес.`,
+}))
+
+type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'contractTermMonths' | 'finalRate'
 
 type SuggestionBody = {
   action: 'APPROVE' | 'OFFER_ALTERNATIVE' | 'DECLINE'
   amount?: number
   termDays?: 30 | 60 | 90
+  contractTermMonths?: ContractTermMonths
   finalRate?: number
 }
 
@@ -63,11 +70,13 @@ export function DecisionForm({
   const id = useId()
   const formRef = useRef<HTMLFormElement>(null)
   const termRef = useRef<HTMLDivElement>(null)
+  const contractTermRef = useRef<HTMLDivElement>(null)
   const [action, setAction] = useState<Decision['action'] | ''>('')
   const [values, setValues] = useState({
     comment: '',
     amount: '',
     termDays: '',
+    contractTermMonths: '',
     finalRate: '',
   })
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
@@ -100,6 +109,12 @@ export function DecisionForm({
         values.termDays === '90'
       )
         body.termDays = Number(values.termDays) as 30 | 60 | 90
+      if (
+        values.contractTermMonths === '6' ||
+        values.contractTermMonths === '12' ||
+        values.contractTermMonths === '24'
+      )
+        body.contractTermMonths = Number(values.contractTermMonths) as ContractTermMonths
     }
     const rate = parseNumber(values.finalRate)
     if (action !== 'DECLINE' && rate !== null && rate >= 0 && rate <= 100)
@@ -124,7 +139,7 @@ export function DecisionForm({
     event.preventDefault()
     if (disabled || pending) return
     if (action && action !== 'DECLINE' && requiresManualRate && !values.finalRate.trim()) {
-      setErrors({ finalRate: 'Укажите итоговую ставку: сервер не передал расчётную ставку для этой заявки' })
+      setErrors({ finalRate: 'Укажите ставку для ориентировочного транша: сервер не передал расчётную ставку для этой заявки' })
       formRef.current?.querySelector<HTMLElement>('[name="finalRate"]')?.focus()
       return
     }
@@ -139,6 +154,7 @@ export function DecisionForm({
           field === 'comment' ||
           field === 'amount' ||
           field === 'termDays' ||
+          field === 'contractTermMonths' ||
           field === 'finalRate'
         ) {
           nextErrors[field] ??=
@@ -148,6 +164,7 @@ export function DecisionForm({
       setErrors(nextErrors)
       const firstField = Object.keys(nextErrors)[0]
       if (firstField === 'termDays') termRef.current?.focus()
+      else if (firstField === 'contractTermMonths') contractTermRef.current?.focus()
       else if (firstField) {
         formRef.current
           ?.querySelector<HTMLElement>(`[name="${firstField}"]`)
@@ -211,18 +228,22 @@ export function DecisionForm({
           className={styles.product}
           aria-label="Предложение по параметрам заявки"
         >
-          <h3 className={styles.sectionTitle}>Краткосрочное финансирование</h3>
+          <h3 className={styles.sectionTitle}>Договор овердрафта</h3>
           <dl>
             <div>
-              <dt>Сумма предложения</dt>
+              <dt>Лимит договора</dt>
               <dd>{formatMoney(application.amount)}</dd>
             </div>
             <div>
-              <dt>Срок</dt>
+              <dt>Запрошенный срок договора</dt>
+              <dd>{application.contractTermMonths} мес.</dd>
+            </div>
+            <div>
+              <dt>Ориентировочный срок транша</dt>
               <dd>{application.termDays} дней</dd>
             </div>
             <div>
-              <dt>Ставка при одобрении</dt>
+              <dt>Ставка для ориентировочного транша при одобрении</dt>
               <dd>
                 {recommendedRate == null
                   ? requiresManualRate ? 'Укажите ставку вручную' : 'Рассчитает сервер при сохранении'
@@ -230,7 +251,7 @@ export function DecisionForm({
               </dd>
             </div>
             <div>
-              <dt>Платёж скоринга по базовой ставке</dt>
+              <dt>Пример платежа по базовой ставке</dt>
               <dd>
                 {application.scoring?.newMonthlyPayment == null
                   ? 'Расчёт не передан'
@@ -240,7 +261,7 @@ export function DecisionForm({
           </dl>
           <Input
             name="finalRate"
-            label="Итоговая годовая ставка, %"
+            label="Ставка для ориентировочного транша, % годовых"
             labelView="outer"
             inputMode="decimal"
             required={requiresManualRate}
@@ -254,11 +275,13 @@ export function DecisionForm({
             block
           />
           <p className={styles.note}>
-            Сумма и срок соответствуют заявке. Указанная сотрудником ставка
-            имеет приоритет. Без неё сервер использует рекомендацию или тарифную
+            Лимит, срок договора и ориентировочный срок транша соответствуют
+            заявке. Указанная сотрудником ставка имеет приоритет.
+            Без неё сервер использует рекомендацию или тарифную
             матрицу; при отсутствии расчётной ставки требуется ручной ввод.
-            Показанный платёж скоринга рассчитан по базовой ставке, а не по
-            ставке предложения. Платёж предложения рассчитает сервер.
+            Показанный платёж скоринга рассчитан по базовой ставке, если взять
+            весь лимит одним траншем на {application.termDays} дней, а не по
+            ставке предложения. Пример платежа предложения рассчитает сервер.
             Просмотр условий не отправляет предложение клиенту.
           </p>
         </section>
@@ -273,7 +296,7 @@ export function DecisionForm({
           </h3>
           <Input
             name="amount"
-            label="Изменить сумму предложения"
+            label="Изменить лимит договора"
             labelView="outer"
             inputMode="decimal"
             value={values.amount}
@@ -281,16 +304,34 @@ export function DecisionForm({
             error={errors.amount}
             hint={`Необязательно. Без изменения: ${
               recommendedAmount == null
-                ? 'сумму рассчитает сервер'
+                ? 'лимит рассчитает сервер'
                 : `${formatMoney(recommendedAmount)} из рекомендации`
             }. От 50 000 до 20 000 000 ₽.`}
             disabled={disabled || pending}
             block
           />
           <Select
+            ref={contractTermRef}
+            name="contractTermMonths"
+            label="Изменить срок договора, месяцев"
+            labelView="outer"
+            options={contractTermOptions}
+            selected={values.contractTermMonths || null}
+            onChange={({ selected }) =>
+              changeField('contractTermMonths', selected?.key ?? '')
+            }
+            allowUnselect
+            clear={values.contractTermMonths !== ''}
+            onClear={() => changeField('contractTermMonths', '')}
+            error={errors.contractTermMonths}
+            hint={`Необязательно. Без изменения: ${application.contractTermMonths} мес. из заявки. Можно выбрать 6, 12 или 24 месяца.`}
+            disabled={disabled || pending}
+            block
+          />
+          <Select
             ref={termRef}
             name="termDays"
-            label="Изменить срок, дней"
+            label="Изменить ориентировочный срок транша, дней"
             labelView="outer"
             options={termOptions}
             selected={values.termDays || null}
@@ -307,7 +348,7 @@ export function DecisionForm({
           />
           <Input
             name="finalRate"
-            label="Изменить итоговую годовую ставку, %"
+            label="Изменить ставку для ориентировочного транша, % годовых"
             labelView="outer"
             inputMode="decimal"
             required={requiresManualRate}
@@ -329,17 +370,19 @@ export function DecisionForm({
             values.finalRate.trim() === '' &&
             recommendedRate != null && (
               <p className={styles.warning} role="status">
-                Срок изменён, но ставка не задана. Сервер использует ставку из
-                рекомендации {recommendedRate}% без пересчёта под новый срок.
+                Ориентировочный срок транша изменён, но ставка не задана.
+                Сервер использует ставку из рекомендации {recommendedRate}%
+                без пересчёта под новый срок транша.
                 Укажите ставку вручную, если требуется её изменить.
               </p>
             )}
           <p className={styles.note}>
-            Сумму и срок можно оставить без изменений. Ставка обязательна, если
+            Лимит и сроки можно оставить без изменений. Пустой срок договора
+            берётся из заявки. Ставка обязательна, если
             сервер не может её рассчитать. Пустые поля не отправляются;
-            сервер применит доступные значения по умолчанию. Платёж
-            предложения рассчитает сервер; скоринг исходной заявки здесь не
-            пересчитывается.
+            сервер применит доступные значения по умолчанию. Пример платежа
+            для всего лимита одним траншем рассчитает сервер; скоринг исходной
+            заявки здесь не пересчитывается.
           </p>
         </section>
       )}
