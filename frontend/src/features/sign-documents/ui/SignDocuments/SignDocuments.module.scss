@@ -59,6 +59,7 @@
 }
 
 .terms dt,
+.termsNote,
 .paperMeta,
 .sideNote,
 .sideTitle {
@@ -70,6 +71,12 @@
   margin: var(--gap-0);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.termsNote {
+  margin: var(--gap-0) var(--gap-0) var(--gap-24);
+  font-size: calc(var(--gap-12) + var(--gap-2));
+  line-height: 1.5;
 }
 
 .workspace {

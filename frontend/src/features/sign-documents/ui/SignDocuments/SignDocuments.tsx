@@ -34,13 +34,20 @@ export function SignDocuments({
   const heading = useRef<HTMLHeadingElement>(null)
   const submitting = useRef(false)
   const [selectedType, setSelectedType] = useState(initialDocument)
-  const [acknowledged, setAcknowledged] = useState<string | null>(null)
-  const { documents, sign, refresh, uncertain } = useSignDocuments(application.id, open)
+  const [review, setReview] = useState<{ version: string | null; confirmed: boolean }>({
+    version: null,
+    confirmed: false,
+  })
+  const { documents, applications, offer: currentOffer, sign, refresh, uncertain } = useSignDocuments(application.id, open, offer)
   const data = documents.data
-  const version = data ? documentPackageVersion(data) : null
+  const matchingOffer = currentOffer?.id === data?.offerId ? currentOffer : null
+  const version = data && matchingOffer
+    ? JSON.stringify([documentPackageVersion(data), matchingOffer.contractTermMonths])
+    : null
   const signed = Boolean(data?.signedAt && data.signedBy)
-  const error = documents.error ?? (!signed ? sign.error : null)
-  const confirmed = version !== null && acknowledged === version
+  const error = documents.error ?? applications.error ?? (!signed ? sign.error : null)
+  if (review.version !== version) setReview({ version, confirmed: false })
+  const confirmed = version !== null && review.version === version && review.confirmed
   const active = data?.documents.find((doc) => doc.type === selectedType) ?? data?.documents[0]
   // The API title is already rendered above the text, including for legacy snapshots.
   const paragraphs = active?.content.split(/\n\s*\n/)
@@ -50,8 +57,7 @@ export function SignDocuments({
       paragraph.replace(/\s*\(демонстрационный текст\)$/iu, '').toLocaleUpperCase('ru-RU') ===
       active?.title.toLocaleUpperCase('ru-RU'))) ?? []
   const activeIndex = active ? data?.documents.indexOf(active) ?? 0 : 0
-  const matchingOffer = offer?.id === data?.offerId ? offer : null
-  const canSign = data?.signingAllowed && !signed && !uncertain && !documents.isError && confirmed
+  const canSign = data?.signingAllowed && !signed && !uncertain && !documents.isError && !applications.isError && confirmed
 
   useEffect(() => {
     if (open) heading.current?.focus({ preventScroll: true })
@@ -75,7 +81,7 @@ export function SignDocuments({
       onClose={close}
       wrapperProps={{ 'aria-labelledby': `${id}-title` }}
       onUnmount={() => {
-        setAcknowledged(null)
+        setReview({ version: null, confirmed: false })
         setSelectedType(initialDocument)
         requestAnimationFrame(() => {
           if (returnFocusRef?.current?.isConnected && !document.querySelector('[role="dialog"]'))
@@ -98,25 +104,41 @@ export function SignDocuments({
             </h2>
             <p>
               {signed
-                ? 'Оформление завершено. Подписанные документы доступны в вашем кабинете.'
+                ? 'Договор подписан. Документы доступны в вашем кабинете; транши оформляются отдельно.'
                 : 'Проверьте документы по предложению банка и подтвердите подписание одним действием.'}
             </p>
           </div>
         </header>
 
         {matchingOffer && (
-          <dl className={styles.terms}>
-            <div><dt>Сумма предложения</dt><dd>{formatMoney(matchingOffer.amount, { exact: true })}</dd></div>
-            <div><dt>Срок</dt><dd>{matchingOffer.termDays} дней</dd></div>
-            <div><dt>Итоговая ставка</dt><dd>{String(matchingOffer.finalRate).replace('.', ',')}% годовых</dd></div>
-          </dl>
+          <>
+            <dl className={styles.terms}>
+              <div><dt>Лимит договора</dt><dd>{formatMoney(matchingOffer.amount, { exact: true })}</dd></div>
+              <div><dt>Срок договора</dt><dd>{matchingOffer.contractTermMonths === null
+                ? 'Не указан'
+                : `${matchingOffer.contractTermMonths} мес.`}</dd></div>
+              <div><dt>Ориентировочный срок транша</dt><dd>{matchingOffer.termDays} дней</dd></div>
+              <div><dt>Ставка для ориентировочного транша</dt><dd>{String(matchingOffer.finalRate).replace('.', ',')}% годовых</dd></div>
+              <div><dt>Пример ежемесячного платежа</dt><dd>{formatMoney(matchingOffer.monthlyPayment, { exact: true })}</dd></div>
+              {matchingOffer.contractStart !== null && (
+                <div><dt>Начало договора</dt><dd>{formatDate(matchingOffer.contractStart)}</dd></div>
+              )}
+              {matchingOffer.contractEnd !== null && (
+                <div><dt>Окончание договора</dt><dd>{formatDate(matchingOffer.contractEnd)}</dd></div>
+              )}
+            </dl>
+            <p className={styles.termsNote}>
+              Пример платежа рассчитан, если взять весь лимит одним траншем на {matchingOffer.termDays} дней.
+              Срок и ставка каждого транша определяются отдельно. Подписание договора не означает выдачу денег.
+            </p>
+          </>
         )}
 
         {error && (
           <div className={styles.error} role="alert">
             <p>{error.message}</p>
-            <Button size={32} view="text" disabled={sign.isPending || documents.isFetching}
-              onClick={() => { setAcknowledged(null); void refresh() }}>
+            <Button size={32} view="text" disabled={sign.isPending || documents.isFetching || applications.isFetching}
+              onClick={() => { setReview({ version, confirmed: false }); void refresh() }}>
               {uncertain ? 'Проверить результат' : 'Обновить документы'}
             </Button>
           </div>
@@ -223,9 +245,9 @@ export function SignDocuments({
             ) : data?.signingAllowed && !uncertain ? (
               <Checkbox
                 checked={confirmed}
-                disabled={sign.isPending || documents.isError}
+                disabled={sign.isPending || documents.isError || applications.isError}
                 label="Ознакомлен с двумя документами и подтверждаю их подписание"
-                onChange={(_, { checked }) => setAcknowledged(checked ? version : null)}
+                onChange={(_, { checked }) => setReview({ version, confirmed: checked })}
               />
             ) : (
               <p>{uncertain
@@ -238,19 +260,19 @@ export function SignDocuments({
           {signed || (!data?.signingAllowed && !uncertain) ? (
             <Button view={signed ? 'primary' : 'secondary'} size={48} onClick={close}>Готово</Button>
           ) : uncertain ? (
-            <Button view="primary" size={48} loading={documents.isFetching}
-              disabled={documents.isFetching} onClick={() => { setAcknowledged(null); void refresh() }}>
+            <Button view="primary" size={48} loading={documents.isFetching || applications.isFetching}
+              disabled={documents.isFetching || applications.isFetching} onClick={() => { setReview({ version, confirmed: false }); void refresh() }}>
               Проверить результат
             </Button>
           ) : (
             <Button view="primary" size={48} loading={sign.isPending}
-              disabled={!canSign || sign.isPending || documents.isFetching}
+              disabled={!canSign || sign.isPending || documents.isFetching || applications.isFetching}
               onClick={() => {
-                if (!canSign || !data || submitting.current) return
+                if (!canSign || !data || !matchingOffer || submitting.current) return
                 submitting.current = true
-                sign.mutate({ snapshot: data, generation: getSessionGeneration() }, {
+                sign.mutate({ snapshot: data, contractTermMonths: matchingOffer.contractTermMonths, generation: getSessionGeneration() }, {
                   onSettled: () => { submitting.current = false },
-                  onError: () => setAcknowledged(null),
+                  onError: () => setReview({ version, confirmed: false }),
                 })
               }}>
               {sign.isPending ? 'Сохраняем подпись…' : 'Подписать 2 документа'}
