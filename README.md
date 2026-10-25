@@ -50,7 +50,7 @@ backend/SmartCredit/src/main/resources/db/migration/           # Миграци�
 | `entities` | Модели предметной области, Zod-схемы и работа с серверными данными | `company`, `loan-application`, `application-document`, `session` |
 | `shared` | Код без привязки к конкретному сценарию | HTTP-клиент, обёртки над Alfa UI, форматирование, конфигурация маршрутов |
 
-Основное направление зависимостей: `pages → widgets → features → entities → shared`; `app` связывает приложение целиком. В текущем коде есть композиция соседних features, например форма использует редактирование профиля. Отдельного ESLint-правила, которое проверяет границы FSD, пока нет.
+Основное направление зависимостей: `pages → widgets → features → entities → shared`; `app` связывает приложение целиком. В текущем коде есть композиция соседних features, например форма использует редактирование профиля.
 
 ### Доступ и API
 
@@ -222,8 +222,6 @@ Swagger уже подключён через `springdoc-openapi` в текуще
 | Лицензии сторонних компонентов | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | Правила frontend | [frontend-rules.md](frontend/docs/frontend-rules.md); фактические зависимости фиксируются в `package.json` и `yarn.lock` |
 | Материалы демонстрации | [МЕСТО ДЛЯ СКРИНШОТА_3: Подготовка заявки и контекстный помощник] |
-
-Лицензия модели не распространяется автоматически на код приложения, UI-компоненты и остальные зависимости. Лицензии и неуточнённые условия перечислены в `THIRD_PARTY_NOTICES.md`.
 
 [model-docs]: https://docs.mistral.ai/models/mistral-small-4-0-26-03
 [model-weights]: https://huggingface.co/mistralai/Mistral-Small-4-119B-2603
