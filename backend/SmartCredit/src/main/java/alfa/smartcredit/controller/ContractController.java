@@ -45,8 +45,8 @@ public class ContractController {
     @PostMapping("/contracts/{id}/tranches")
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Получить транш (овердрафт)",
-            description = "Выдаёт транш на 30/60/90 дней на любую сумму в пределах доступного лимита договора. "
-                    + "Ставка зависит от срока транша и фиксируется на момент получения.")
+            description = "Клиент указывает только сумму в пределах доступного лимита. "
+                    + "Срок каждого транша выбран на первом шаге заявки и вместе со ставкой зафиксирован в договоре.")
     public TrancheView issue(
             @Parameter(description = "Идентификатор договора (= id оферты)", example = "3") @PathVariable Long id,
             @Valid @RequestBody TrancheRequest body,

@@ -4,6 +4,8 @@ const path = require('node:path')
 const vm = require('node:vm')
 const { test } = require('node:test')
 const ts = require('typescript')
+const React = require('react')
+const { renderToStaticMarkup } = require('react-dom/server')
 
 const progressFilename = path.join(__dirname, 'get-application-progress.ts')
 const progressCompiled = ts.transpileModule(readFileSync(progressFilename, 'utf8'), {
@@ -109,15 +111,21 @@ test('legacy offer contract metadata is nullable but never optional or defaulted
   assert.equal(applicationViewSchema.parse({ ...application, offer: legacy }).offer.contractTermMonths, null)
 })
 
-test('signed offer dates and contract duration survive client and bank parsing', () => {
-  const signed = { ...offer, status: 'ACCEPTED', contractTermMonths: 6,
-    contractStart: '2026-10-25', contractEnd: '2027-04-25' }
-  for (const schema of [applicationViewSchema, bankApplicationViewSchema]) {
-    const result = schema.parse({ ...application, status: 'ACCEPTED', offer: signed }).offer
-    assert.equal(result.contractTermMonths, 6)
-    assert.equal(result.contractStart, '2026-10-25')
-    assert.equal(result.contractEnd, '2027-04-25')
-    assert.equal(result.termDays, 60)
+test('signed alternative offers retain first-step tranche days and agreed rate in client and bank views', () => {
+  for (const termDays of [30, 60, 90]) {
+    const signed = { ...offer, status: 'ACCEPTED', amount: 400000, termDays,
+      contractTermMonths: 6, finalRate: 19.5, contractStart: '2026-10-25', contractEnd: '2027-04-25' }
+    for (const schema of [applicationViewSchema, bankApplicationViewSchema]) {
+      const result = schema.parse({ ...application, termDays, status: 'ACCEPTED',
+        decision: 'ALTERNATIVE_OFFER', offer: signed })
+      assert.equal(result.contractTermMonths, 12)
+      assert.equal(result.offer.contractTermMonths, 6)
+      assert.equal(result.offer.contractStart, '2026-10-25')
+      assert.equal(result.offer.contractEnd, '2027-04-25')
+      assert.equal(result.offer.termDays, result.termDays)
+      assert.equal(result.offer.finalRate, 19.5)
+      assert.equal(result.offer.amount, 400000)
+    }
   }
 })
 
@@ -158,5 +166,97 @@ test('renaming the final stage leaves review, decision and signing progress unch
     const stages = getApplicationProgress(status)
     assert.deepEqual(Array.from(stages, (stage) => stage.state), states)
     assert.equal(stages[5].code, 'ISSUED')
+  }
+})
+
+function loadUi(relative, dependencies) {
+  const filename = path.resolve(__dirname, '../..', relative)
+  const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2023, jsx: ts.JsxEmit.ReactJSX },
+  })
+  const module = { exports: {} }
+  vm.runInNewContext(`(function(require, module, exports) { ${compiled.outputText}\n})`, { Error }, { filename })((id) => {
+    if (id === 'react' || id === 'react/jsx-runtime') return require(id)
+    assert.ok(Object.hasOwn(dependencies, id), `Unexpected dependency: ${id}`)
+    return dependencies[id]
+  }, module, module.exports)
+  return module.exports
+}
+
+const Body = ({ children, footer }) => React.createElement('div', null, children, footer)
+const Button = ({ children, disabled }) => React.createElement('button', { disabled }, children)
+const css = { __esModule: true, default: new Proxy({}, { get: (_, key) => String(key) }) }
+const display = { formatMoney: (value) => String(value), formatDate: (value) => value }
+
+test('offers display approved fixed terms and payment examples without a later duration selector', () => {
+  const view = { ...application, decision: 'ALTERNATIVE_OFFER',
+    offer: { ...offer, amount: 400000, contractTermMonths: 6, finalRate: 19.5 } }
+  const { AcceptOffer } = loadUi('features/accept-offer/ui/AcceptOffer/AcceptOffer.tsx', {
+    '@tanstack/react-query': { useMutation: () => ({ isPending: false }), useQueryClient: () => ({}) },
+    '@alfalab/core-components/button': { Button },
+    '@/entities/loan-application': { ...moduleValue.exports,
+      useApplications: () => ({ data: [view], isPending: false, isError: false }) },
+    '@/shared/api': { useApiScope: () => 1 }, '@/shared/lib': display, '@/shared/ui': { Panel: Body },
+    './AcceptOffer.module.scss': css,
+  })
+  for (const status of ['OFFER_READY', 'SIGNATURE_PENDING', 'ACCEPTED']) {
+    view.status = status
+    view.offer.status = status === 'OFFER_READY' ? 'ACTIVE' : 'ACCEPTED'
+    const html = renderToStaticMarkup(React.createElement(AcceptOffer, {
+      application: view, offer: view.offer, open: true, onClose() {}, onViewDocuments() {}, children: null,
+    }))
+    assert.ok(html.includes('<dt>Срок договора</dt><dd>6 мес.</dd>'))
+    assert.ok(html.includes('<dt>Срок транша</dt><dd>60 дней</dd>'))
+    assert.ok(html.includes('<dt>Ставка по договору</dt><dd>19,5%'))
+    assert.ok(html.includes('Если взять весь лимит одним траншем на 60 дней'))
+    assert.ok(html.includes('Пример платежа не является графиком погашения'))
+    assert.ok(html.includes('Это точные условия одобренного предложения'))
+    assert.ok(html.includes('они не выбираются заново'))
+    assert.doesNotMatch(html, /ориентировоч|<select|name="termDays"/i)
+  }
+})
+
+test('signing displays fixed offer terms without rewriting stored document text or signature stamps', () => {
+  const approved = { ...offer, contractTermMonths: 6, finalRate: 19.5 }
+  const content = 'Срок по сохранённому документу: 90 дней.\n\nСтавка по сохранённому документу: 21% годовых.'
+  const snapshot = {
+    applicationId: application.id, offerId: offer.id, documentVersion: 1,
+    signedAt: null, signedBy: null, signingAllowed: true, demo: true,
+    documents: [{ type: 'CONTRACT', title: 'Договор', content }],
+  }
+  const Modal = ({ open, children }) => open ? React.createElement('section', null, children) : null
+  Modal.Header = ({ title }) => React.createElement('h2', null, title)
+  Modal.Content = Modal.Footer = Body
+  const dependencies = {
+    '@alfalab/core-components/modal': { Modal }, '@alfalab/core-components/button': { Button },
+    '@alfalab/core-components/checkbox': { Checkbox: () => null },
+    '@/entities/application-document': { documentPackageVersion: (data) => String(data.documentVersion) },
+    '@/shared/api': {}, '@/shared/lib': display, '@/shared/ui': { AlfaMark: () => null, Skeleton: () => null },
+    '../../model/use-sign-documents': { useSignDocuments: () => ({
+      documents: { data: snapshot, isPending: false }, applications: {}, offer: approved,
+      sign: { isPending: false }, refresh() {}, uncertain: false,
+    }) },
+    './SignDocuments.module.scss': css,
+  }
+  for (const name of ['CheckmarkMIcon', 'DocumentMIcon', 'CrossMIcon']) {
+    dependencies[`@alfalab/icons/glyph/dist/${name}`] = { [name]: () => null }
+  }
+  const { SignDocuments } = loadUi('features/sign-documents/ui/SignDocuments/SignDocuments.tsx', dependencies)
+  for (const signed of [false, true]) {
+    snapshot.signedAt = signed ? '2026-10-25T12:00:00Z' : null
+    snapshot.signedBy = signed ? { fullName: 'Тестовый Предприниматель' } : null
+    const html = renderToStaticMarkup(React.createElement(SignDocuments, {
+      application: { ...application, status: signed ? 'ACCEPTED' : 'SIGNATURE_PENDING' },
+      offer: approved, open: true, onClose() {},
+    }))
+    assert.ok(html.includes('<dt>Срок транша</dt><dd>60 дней</dd>'))
+    assert.ok(html.includes('<dt>Ставка по договору</dt><dd>19,5% годовых</dd>'))
+    assert.ok(html.includes('весь лимит одним траншем на 60 дней'))
+    assert.ok(html.includes('Это не график погашения'))
+    for (const paragraph of content.split('\n\n')) assert.ok(html.includes(`<p>${paragraph}</p>`))
+    assert.equal(snapshot.documents[0].content, content)
+    assert.equal(html.includes('aria-label="Подпись документа"'), signed)
+    if (signed) assert.ok(html.includes('Предложение № 9 · Версия 1'))
+    assert.doesNotMatch(html, /ориентировоч|<select|name="termDays"/i)
   }
 })

@@ -5,13 +5,10 @@ import alfa.smartcredit.dto.TrancheRequest;
 import alfa.smartcredit.dto.TrancheView;
 import alfa.smartcredit.event.ApplicationStatusChangedEvent;
 import alfa.smartcredit.exception.ApiException;
-import alfa.smartcredit.model.Company;
-import alfa.smartcredit.model.CreditApplication;
 import alfa.smartcredit.model.Offer;
 import alfa.smartcredit.model.Tranche;
 import alfa.smartcredit.model.enums.TrancheStatus;
 import alfa.smartcredit.repository.CompanyRepository;
-import alfa.smartcredit.repository.CreditApplicationRepository;
 import alfa.smartcredit.repository.OfferRepository;
 import alfa.smartcredit.repository.TrancheRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,14 +21,13 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 /**
  * Договор овердрафта на 6/12/24 месяца и транши внутри него.
  * Договор = подписанная оферта: лимит = offers.amount, срок = offers.contract_term_months.
- * Клиент берёт несколько траншей на 30/60/90 дней на любую сумму, пока не исчерпан лимит.
+ * Срок и ставка каждого транша зафиксированы в оферте; при выдаче клиент указывает только сумму.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,7 +35,6 @@ public class ContractService {
 
     private final OfferRepository offerRepository;
     private final TrancheRepository trancheRepository;
-    private final CreditApplicationRepository applicationRepository;
     private final CompanyRepository companyRepository;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -47,10 +42,10 @@ public class ContractService {
 
     @Transactional(readOnly = true)
     public List<ContractView> list(Long companyId) {
-        Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
+        companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
         return offerRepository.findByCompanyIdOrderByIdDesc(companyId).stream()
                 .filter(ContractService::isSigned)
-                .map(o -> toView(o, company))
+                .map(this::toView)
                 .toList();
     }
 
@@ -64,12 +59,12 @@ public class ContractService {
 
     @Transactional(readOnly = true)
     public ContractView get(Long companyId, Long contractId) {
-        Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
+        companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
         Offer o = offerRepository.findById(contractId)
                 .orElseThrow(() -> ApiException.notFound("Договор не найден"));
         if (!o.getCompanyId().equals(companyId)) throw ApiException.forbidden();
         if (!isSigned(o)) throw ApiException.notFound("Договор не найден или ещё не подписан");
-        return toView(o, company);
+        return toView(o);
     }
 
     // ---------------------------------------------------------------- получение транша
@@ -84,9 +79,6 @@ public class ContractService {
             throw new ApiException(HttpStatus.CONFLICT, "CONTRACT_NOT_ACTIVE",
                     "Договор ещё не подписан: транши доступны после подписания документов");
 
-        Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
-        CreditApplication app = applicationRepository.findById(o.getApplicationId())
-                .orElseThrow(() -> ApiException.notFound("Заявка не найдена"));
         LocalDate today = LocalDate.now();
         List<Tranche> existing = trancheRepository.findByOfferIdOrderByIdDesc(o.getId());
 
@@ -107,23 +99,24 @@ public class ContractService {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "LIMIT_EXCEEDED",
                     "Сумма транша больше доступного лимита. Доступно: " + money(available));
 
-        LocalDate due = today.plusDays(req.termDays());
-        if (due.isAfter(o.getContractEnd()))
+        ContractView.TrancheTerms terms = trancheTerms(o, today);
+        LocalDate due = terms.dueDate();
+        if (!terms.available())
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "TRANCHE_EXCEEDS_CONTRACT",
-                    "Транш на " + req.termDays() + " дн. закончился бы " + due
-                            + ", уже после окончания договора (" + o.getContractEnd() + "). Выберите меньший срок");
+                    "Установленный договором срок транша " + terms.termDays() + " дн. закончился бы " + due
+                            + ", после окончания договора (" + o.getContractEnd() + "). Новый транш недоступен");
 
-        BigDecimal rate = trancheRate(o, app, company, req.termDays());
+        BigDecimal rate = terms.ratePercent();
         if (rate == null)
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "RATE_UNAVAILABLE",
-                    "Не удалось определить ставку транша для выбранного срока");
+                    "В договоре не установлена ставка транша");
 
         Tranche t = new Tranche();
         t.setCompanyId(companyId);
         t.setOfferId(o.getId());
         t.setApplicationId(o.getApplicationId());
         t.setAmount(amount);
-        t.setTermDays(req.termDays());
+        t.setTermDays(terms.termDays());
         t.setRatePercent(rate);
         t.setIssuedAt(today);
         t.setDueDate(due);
@@ -134,7 +127,7 @@ public class ContractService {
         eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
                 companyId, o.getApplicationId(), "TRANCHE_ISSUED",
                 String.format("Овердрафт №%d: %s на %d дн. под %s%%. Погасить до %s. Остаток лимита: %s.",
-                        t.getId(), money(amount), req.termDays(), pct(rate), due, money(left))));
+                        t.getId(), money(amount), terms.termDays(), pct(rate), due, money(left))));
         return toTrancheView(t, today);
     }
 
@@ -189,12 +182,13 @@ public class ContractService {
         return t.getStatus() == TrancheStatus.ACTIVE && t.getDueDate().isBefore(today);
     }
 
-    /** Ставка транша = базовая ставка на выбранный срок + надбавка договора (класс риска, отрасль, решение сотрудника). */
-    public BigDecimal trancheRate(Offer o, CreditApplication app, Company company, int termDays) {
-        BigDecimal base = ProductRules.baseRate(company.getLegalForm(), app.getBusinessScale(), termDays);
-        if (base == null) return null;
-        BigDecimal spread = o.getRateSpread() == null ? BigDecimal.ZERO : o.getRateSpread();
-        return base.add(spread).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    /** Сохранённые условия оферты не пересчитываются при выдаче очередного транша. */
+    private ContractView.TrancheTerms trancheTerms(Offer offer, LocalDate today) {
+        int days = offer.getTermDays() != null ? offer.getTermDays()
+                : offer.getTermMonths() * ProductRules.DAYS_IN_MONTH;
+        LocalDate due = today.plusDays(days);
+        return new ContractView.TrancheTerms(days, offer.getRatePercent(), due,
+                !due.isAfter(offer.getContractEnd()));
     }
 
     /** Проценты = сумма * ставка% * дней / 365; дней - фактически, минимум 1 (просрочка тоже начисляется по ставке). */
@@ -206,8 +200,7 @@ public class ContractService {
 
     // ---------------------------------------------------------------- маппинг
 
-    ContractView toView(Offer o, Company company) {
-        CreditApplication app = applicationRepository.findById(o.getApplicationId()).orElseThrow();
+    ContractView toView(Offer o) {
         List<Tranche> tranches = trancheRepository.findByOfferIdOrderByIdDesc(o.getId());
         LocalDate today = LocalDate.now();
 
@@ -217,19 +210,15 @@ public class ContractService {
                 .filter(t -> t.getStatus() == TrancheStatus.ACTIVE)
                 .map(Tranche::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        List<ContractView.TermOption> terms = new ArrayList<>();
-        for (int d : ProductRules.TERM_DAYS.stream().sorted().toList()) {
-            LocalDate due = today.plusDays(d);
-            terms.add(new ContractView.TermOption(d, trancheRate(o, app, company, d), due,
-                    !due.isAfter(o.getContractEnd())));
-        }
+        ContractView.TrancheTerms terms = trancheTerms(o, today);
 
         boolean expired = today.isAfter(o.getContractEnd());
         String blocked;
         if (expired) blocked = "CONTRACT_EXPIRED";
         else if (hasOverdue(tranches, today)) blocked = "HAS_OVERDUE_TRANCHE";
         else if (available.compareTo(ProductRules.MIN_TRANCHE_AMOUNT) < 0) blocked = "LIMIT_EXHAUSTED";
-        else if (terms.stream().noneMatch(ContractView.TermOption::available)) blocked = "CONTRACT_ENDING";
+        else if (!terms.available()) blocked = "CONTRACT_ENDING";
+        else if (terms.ratePercent() == null) blocked = "RATE_UNAVAILABLE";
         else blocked = null;
 
         return new ContractView(o.getId(), o.getApplicationId(), expired ? "EXPIRED" : "ACTIVE",

@@ -37,7 +37,7 @@ public class Offer {
 
     /** Срок договора овердрафта в месяцах: 6, 12 или 24. */
     @Column(name = "contract_term_months") private Integer contractTermMonths;
-    /** Итоговая ставка минус базовая ставка по сроку; прибавляется к базовой ставке каждого транша. */
+    /** Надбавка прежней модели; новые транши используют сохранённую rate_percent. */
     @Column(name = "rate_spread") private BigDecimal rateSpread;
     /** Начало и конец договора: заполняются при подписании. */
     @Column(name = "contract_start") private LocalDate contractStart;

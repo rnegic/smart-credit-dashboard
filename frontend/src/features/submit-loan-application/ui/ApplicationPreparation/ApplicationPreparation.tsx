@@ -42,7 +42,7 @@ export function ApplicationPreparationVisual() {
           {[
             'Лимит договора',
             'Срок договора',
-            'Ориентировочный срок транша',
+            'Срок транша',
             'Цель',
           ].map((label) => (
             <div className={styles.field} key={label}>

@@ -187,7 +187,7 @@ export function ApplicationQueue({
                     <span className={styles.cellLabel}>Лимит / сроки</span>
                     <strong className={styles.money}>{formatMoney(application.amount)}</strong>
                     <span className={styles.secondary}>Договор: {application.contractTermMonths} мес.</span>
-                    <span className={styles.secondary}>Ориентировочный транш: {application.termDays} дней</span>
+                    <span className={styles.secondary}>Срок транша: {application.termDays} дней</span>
                     <span className={styles.purpose} title={getApplicationPurposeLabel(application.purpose)}>
                       {getApplicationPurposeLabel(application.purpose)}
                     </span>

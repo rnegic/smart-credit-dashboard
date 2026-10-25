@@ -5,6 +5,7 @@ import { Typography } from '@alfalab/core-components/typography'
 import { ArrowRightMIcon } from '@alfalab/icons/glyph/dist/ArrowRightMIcon'
 import { WalletMIcon } from '@alfalab/icons/glyph/dist/WalletMIcon'
 import { useDashboard } from '@/entities/dashboard'
+import { contractIssueBlockedLabels } from '@/entities/contract'
 import { ROUTES } from '@/shared/config'
 import { formatDate, formatMoney } from '@/shared/lib'
 import { Skeleton } from '@/shared/ui'
@@ -112,14 +113,19 @@ export function CreditSummary() {
               <div><dt>Основной долг</dt><dd>{formatMoney(contract.outstandingPrincipal, { exact: true })}</dd></div>
               <div><dt>Срок договора</dt><dd>{contract.contractTermMonths} мес.</dd></div>
               <div><dt>Действует до</dt><dd>{formatDate(contract.endDate)}</dd></div>
+              <div><dt>Фиксированный срок траншей</dt><dd>{contract.trancheTerms.termDays} дней</dd></div>
+              <div><dt>Согласованная ставка</dt><dd>{contract.trancheTerms.ratePercent === null ? 'Ставка недоступна' : `${String(contract.trancheTerms.ratePercent).replace('.', ',')}% годовых`}</dd></div>
             </dl>
             <Typography.Text tag="p" view="primary-small" color="secondary">
-              {contractAction?.code === 'REPAY_TRANCHE'
-                ? 'Есть просроченный транш. Погасите его, чтобы получить новый.'
-                : contract.revolving
-                  ? 'После погашения траншей доступный лимит восстанавливается.'
-                  : 'Погашение траншей не восстанавливает лимит договора.'}
+              {contract.revolving
+                ? 'После погашения траншей доступный лимит восстанавливается.'
+                : 'Лимит расходуется на общую сумму всех траншей за срок договора. Погашение траншей его не восстанавливает.'}
             </Typography.Text>
+            {!contract.canIssueTranche && contract.issueBlockedReason && (
+              <Typography.Text tag="p" view="primary-small" color="secondary" role="status">
+                {contractIssueBlockedLabels[contract.issueBlockedReason]}
+              </Typography.Text>
+            )}
           </>
         ) : loan ? (
           <>

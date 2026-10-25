@@ -4,6 +4,7 @@ import alfa.smartcredit.dto.AssistantRequest;
 import alfa.smartcredit.dto.AssistantResponse;
 import alfa.smartcredit.dto.DashboardResponse;
 import alfa.smartcredit.exception.ApiException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,7 @@ import java.util.regex.Pattern;
 
 /** Generates grounded client guidance without storing conversations or changing business data. */
 @Service
+@Slf4j
 public class AssistantService {
     private static final int MAX_REQUEST_CHARS = 48000;
     private static final int MAX_PROMPT_CHARS = 64000;
@@ -79,9 +81,12 @@ public class AssistantService {
               сроки договора в месяцах, а не одобренные условия. Ставки, суммы и сроки предложения называй
               только по фактам сервера.
             - Продукт: договор овердрафта на 6, 12 или 24 месяца с лимитом. Внутри договора клиент может брать
-              несколько траншей на 30, 60 или 90 дней на любую сумму, пока не исчерпан лимит. Ставка зависит от
-              срока транша и фиксируется при получении. activeContract (если не null) - факты о действующем договоре:
-              лимит, использованный и доступный лимит, транши. Транш считается полученным только если он есть
+              несколько траншей на любую сумму, пока не исчерпан лимит. Срок транша выбирается только на первом
+              шаге заявки: 30, 60 или 90 дней. После одобрения банк фиксирует срок и ставку в индивидуальных
+              условиях, которые клиент видит до подписания. При получении транша выбирается только сумма,
+              менять срок и ставку нельзя. Не называй срок транша ориентировочным и не предлагай выбирать его
+              на этапе получения. activeContract (если не null) - факты о действующем договоре:
+              лимит, использованный и доступный лимит, единые trancheTerms и транши. Транш считается полученным только если он есть
               в activeContract.tranches.
             - IN_REVIEW: заявка на рассмотрении, одобрение не гарантировано.
               OFFER_READY: предложение готово, следующий этап - принять условия предложения.
@@ -170,9 +175,13 @@ public class AssistantService {
                         .header("Authorization", "Bearer " + apiKey)
                         .contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON)
                         .body(body).exchange((httpRequest, response) -> {
-                            if (!response.getStatusCode().is2xxSuccessful()) throw unavailable();
+                            if (!response.getStatusCode().is2xxSuccessful()) {
+                                log.warn("AI assistant provider rejected request: httpStatus={}, model={}",
+                                        response.getStatusCode().value(), model);
+                                throw unavailable();
+                            }
                             byte[] bytes = response.getBody().readNBytes(MAX_PROVIDER_BYTES + 1);
-                            if (bytes.length > MAX_PROVIDER_BYTES) throw badResponse();
+                            if (bytes.length > MAX_PROVIDER_BYTES) throw badResponse("PROVIDER_RESPONSE_TOO_LARGE");
                             return parseResponse(bytes, request.screen());
                         });
             } catch (RestClientException e) {
@@ -229,6 +238,7 @@ public class AssistantService {
                     .put("limitIsRevolving", contract.revolving())
                     .put("canIssueTranche", contract.canIssueTranche())
                     .put("issueBlockedReason", contract.issueBlockedReason());
+            c.set("trancheTerms", mapper.valueToTree(contract.trancheTerms()));
             var trs = c.putArray("tranches");
             contract.tranches().stream().limit(10).forEach(t -> trs.addObject()
                     .put("amount", t.amount()).put("termDays", t.termDays()).put("ratePercent", t.ratePercent())
@@ -256,31 +266,40 @@ public class AssistantService {
     }
 
     private AssistantResponse parseResponse(byte[] bytes, AssistantRequest.Screen screen) {
+        String stage = "PROVIDER_JSON";
         try {
             JsonNode root = jsonReader.readTree(bytes);
-            if (root == null || !root.isObject()) throw badResponse();
+            if (root == null || !root.isObject()) throw badResponse("PROVIDER_NOT_OBJECT");
+            if (root.hasNonNull("error")) {
+                JsonNode code = root.path("error").path("code");
+                log.warn("AI assistant provider returned error in HTTP 200: upstreamCode={}, model={}",
+                        code.isIntegralNumber() && code.canConvertToInt() ? code.asInt() : 0, model);
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE",
+                        "ИИ-провайдер временно недоступен или ограничивает запросы. Попробуйте немного позже.");
+            }
             JsonNode choice = root.path("choices").path(0);
             JsonNode finish = choice.path("finish_reason");
             if (!finish.isMissingNode() && !finish.isNull() && !"stop".equals(finish.asText()))
-                throw badResponse();
+                throw badResponse("length".equals(finish.asText()) ? "COMPLETION_LENGTH" : "COMPLETION_NOT_STOPPED");
             JsonNode message = choice.path("message");
             if ((message.has("refusal") && !message.path("refusal").isNull())
                     || message.path("tool_calls").size() > 0
                     || (message.has("function_call") && !message.path("function_call").isNull()))
-                throw badResponse();
+                throw badResponse("REFUSAL_OR_TOOL_CALL");
             JsonNode content = message.path("content");
-            if (!content.isTextual()) throw badResponse();
+            if (!content.isTextual()) throw badResponse("CONTENT_NOT_TEXT");
+            stage = content.asText().strip().startsWith("```") ? "ANSWER_JSON_CODE_FENCE" : "ANSWER_JSON";
             JsonNode result = jsonReader.readTree(content.asText());
             if (result == null || !result.isObject()
                     || result.size() != (result.has("focusFieldId") ? 2 : 1)
-                    || !result.path("answer").isTextual()) throw badResponse();
+                    || !result.path("answer").isTextual()) throw badResponse("ANSWER_SHAPE");
 
             String answer = result.path("answer").asText().strip();
             if (answer.isBlank() || answer.length() > 6000 || HTML_TAG.matcher(answer).find()
                     || answer.codePoints().noneMatch(c -> !Character.isWhitespace(c) && !Character.isSpaceChar(c)
                             && Character.getType(c) != Character.FORMAT)
                     || answer.chars().anyMatch(c -> Character.isISOControl(c) && c != '\n' && c != '\r' && c != '\t'))
-                throw badResponse();
+                throw badResponse("ANSWER_TEXT");
             JsonNode focusNode = result.path("focusFieldId");
             String focus = focusNode.isTextual() ? focusNode.asText() : null;
             if (focus == null || focus.isBlank() || focus.length() > 160
@@ -288,7 +307,7 @@ public class AssistantService {
                 focus = null;
             return new AssistantResponse(answer, focus);
         } catch (JacksonException e) {
-            throw badResponse();
+            throw badResponse(stage);
         }
     }
 
@@ -302,7 +321,8 @@ public class AssistantService {
                 "ИИ-помощник временно недоступен или занят. Попробуйте немного позже.");
     }
 
-    private ApiException badResponse() {
+    private ApiException badResponse(String reason) {
+        log.warn("AI assistant response rejected: reason={}, model={}, format={}", reason, model, responseFormat);
         return new ApiException(HttpStatus.BAD_GATEWAY, "AI_BAD_RESPONSE",
                 "Не удалось получить корректный ответ ИИ-помощника. Попробуйте ещё раз.");
     }

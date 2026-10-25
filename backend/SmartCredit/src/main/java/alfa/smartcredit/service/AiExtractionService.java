@@ -120,6 +120,13 @@ public class AiExtractionService {
             throw unavailable();
         }
 
+        if (root != null && root.isObject() && root.hasNonNull("error")) {
+            JsonNode code = root.path("error").path("code");
+            log.warn("ИИ-провайдер вернул ошибку внутри HTTP 200: upstreamCode={}, model={}",
+                    code.isIntegralNumber() && code.canConvertToInt() ? code.asInt() : 0, model);
+            throw unavailable();
+        }
+
         JsonNode n;
         try {
             if (root == null || !root.isObject()) throw new IllegalArgumentException("Missing response");

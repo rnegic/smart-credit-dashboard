@@ -39,7 +39,9 @@ public class AiCommentService {
         Ты кредитный аналитик банка. Сотрудник банка принял решение по заявке малого бизнеса.
         Составь краткий (2-3 предложения) комментарий от лица сотрудника, обосновывающий это решение.
         Продукт: договор овердрафта на contractTermMonths месяцев с лимитом (amount); внутри договора клиент
-        берёт несколько траншей на 30/60/90 дней, пока не исчерпан лимит.
+        берёт несколько траншей, пока не исчерпан лимит. Срок каждого транша fixedTrancheTermDays
+        выбран на первом шаге заявки, не меняется сотрудником и фиксируется в индивидуальных условиях.
+        Срок договора и срок транша сообщаются клиенту после одобрения и до подписания договора.
         Правила:
         - Используй только переданные данные, ничего не выдумывай.
         - officerAction = "APPROVE" — обоснуй одобрение запрошенных условий.
@@ -141,7 +143,7 @@ public class AiCommentService {
             facts.put("officerAction", req.action());
             if (req.action() != DecisionRequest.Action.DECLINE) {
                 facts.put("proposedAmount", req.amount() != null ? req.amount() : requestedAmount);
-                facts.put("proposedTermDays", req.termDays() != null ? req.termDays() : requestedTermDays);
+                facts.put("fixedTrancheTermDays", requestedTermDays);
                 facts.put("proposedContractTermMonths", req.contractTermMonths() != null
                         ? req.contractTermMonths() : requestedContractTermMonths);
                 facts.put("proposedRate", req.finalRate());

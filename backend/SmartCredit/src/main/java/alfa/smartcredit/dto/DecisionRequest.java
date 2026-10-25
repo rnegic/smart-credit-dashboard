@@ -1,7 +1,6 @@
 package alfa.smartcredit.dto;
 
 import alfa.smartcredit.validation.ValidContractTerm;
-import alfa.smartcredit.validation.ValidTermDays;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -23,9 +22,6 @@ public record DecisionRequest(
                 + "используется только при OFFER_ALTERNATIVE", example = "400000",
                 minimum = "50000", maximum = "20000000")
         @DecimalMin("50000") @DecimalMax("20000000") BigDecimal amount,
-        @Schema(description = "Ориентировочный срок транша для альтернативного предложения: 30, 60 или 90 дней. "
-                + "От него зависит базовая ставка; по каждому траншу клиент выбирает срок сам", example = "60")
-        @ValidTermDays Integer termDays,
         @Schema(description = "Срок договора для альтернативного предложения: 6, 12 или 24 месяца; "
                 + "если не передан, берётся из заявки", example = "12")
         @ValidContractTerm Integer contractTermMonths,

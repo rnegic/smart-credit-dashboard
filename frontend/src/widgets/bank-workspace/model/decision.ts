@@ -46,14 +46,6 @@ export const decisionSchema = z.discriminatedUnion('action', [
         )
         .optional(),
     ),
-    termDays: optionalInputSchema.pipe(
-      z
-        .enum(['30', '60', '90'], {
-          error: 'Выберите срок 30, 60 или 90 дней',
-        })
-        .transform(Number)
-        .optional(),
-    ),
     contractTermMonths: optionalInputSchema.pipe(
       z
         .enum(['6', '12', '24'], {

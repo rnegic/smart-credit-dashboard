@@ -1,8 +1,15 @@
 import { useId } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '@alfalab/core-components/button'
+import { IconButton } from '@alfalab/core-components/icon-button'
 import { PureCell } from '@alfalab/core-components/pure-cell'
+import { Status } from '@alfalab/core-components/status'
+import { TooltipDesktop } from '@alfalab/core-components/tooltip/desktop'
 import { Typography } from '@alfalab/core-components/typography'
+import { ArrowRightMIcon } from '@alfalab/icons/glyph/dist/ArrowRightMIcon'
+import { ArrowsCwMIcon } from '@alfalab/icons/glyph/dist/ArrowsCwMIcon'
+import { CheckmarkCircleSIcon } from '@alfalab/icons/glyph/dist/CheckmarkCircleSIcon'
+import { ClockSIcon } from '@alfalab/icons/glyph/dist/ClockSIcon'
 import {
   contractIssueBlockedLabels,
   trancheStatusLabels,
@@ -28,9 +35,12 @@ function ContractDetails({ contract }: { contract: Contract }) {
         <Typography.TitleResponsive id={headingId} tag="h2" view="medium" font="system">
           Договор № {contract.id}
         </Typography.TitleResponsive>
-        <Typography.Text color={contract.status === 'ACTIVE' ? 'positive' : 'secondary'}>
+        <Status color={contract.status === 'ACTIVE' ? 'green' : 'orange'} view="muted"
+          size={24} shape="rounded" uppercase={false}
+          leftAddons={contract.status === 'ACTIVE'
+            ? <CheckmarkCircleSIcon aria-hidden="true" /> : <ClockSIcon aria-hidden="true" />}>
           {contract.status === 'ACTIVE' ? 'Действует' : 'Срок истёк'}
-        </Typography.Text>
+        </Status>
       </div>
       <dl className={styles.metrics}>
         <div><dt>Лимит договора</dt><dd>{formatMoney(contract.limit, { exact: true })}</dd></div>
@@ -61,21 +71,17 @@ function ContractDetails({ contract }: { contract: Contract }) {
           {payable.length > 0 && ' Погашение открытых траншей доступно ниже.'}
         </Typography.Text>
       )}
-      <section className={styles.section} aria-label="Условия новых траншей">
-        <Typography.TitleResponsive tag="h3" view="small" font="system">Сроки и ставки траншей</Typography.TitleResponsive>
+      <section className={styles.section} aria-label="Условия траншей по договору">
+        <Typography.TitleResponsive tag="h3" view="small" font="system">Условия траншей по договору</Typography.TitleResponsive>
         <Typography.Text tag="p" view="primary-small" color="secondary">
-          Условия рассчитаны сервером на сегодня. Ставка фиксируется в момент получения каждого транша.
+          Срок и ставка зафиксированы в одобренных условиях и не меняются при получении нового транша. Дата погашения рассчитана сервером для выдачи сегодня.
         </Typography.Text>
-        <ul className={styles.terms}>
-          {contract.trancheTerms.map((term) => (
-            <li key={term.termDays} className={styles.term}>
-              <Typography.Text weight="medium">{term.termDays} дней</Typography.Text>
-              <Typography.Text>{term.ratePercent === null ? 'Ставка недоступна' : `${String(term.ratePercent).replace('.', ',')}% годовых`}</Typography.Text>
-              <Typography.Text view="primary-small" color="secondary">Погасить до {formatDate(term.dueDate)}</Typography.Text>
-              {!term.available && <Typography.Text view="primary-small" color="secondary">За пределами срока договора</Typography.Text>}
-            </li>
-          ))}
-        </ul>
+        <dl className={styles.parameters}>
+          <div><dt>Фиксированный срок нового транша</dt><dd>{contract.trancheTerms.termDays} дней</dd></div>
+          <div><dt>Согласованная ставка</dt><dd>{contract.trancheTerms.ratePercent === null ? 'Ставка недоступна' : `${String(contract.trancheTerms.ratePercent).replace('.', ',')}% годовых`}</dd></div>
+          <div><dt>Погасить новый транш до</dt><dd>{formatDate(contract.trancheTerms.dueDate)}</dd></div>
+        </dl>
+        {!contract.trancheTerms.available && <Typography.Text tag="p" view="primary-small" color="secondary">{contractIssueBlockedLabels.CONTRACT_ENDING}</Typography.Text>}
       </section>
       <section className={styles.section} aria-label="Транши договора">
         <Typography.TitleResponsive tag="h3" view="small" font="system">Овердрафты</Typography.TitleResponsive>
@@ -126,10 +132,14 @@ function SelectedContract({ id }: { id: number }) {
   const navigate = useNavigate()
   return (
     <div className={styles.content}>
-      <div className={styles.actions}>
+      <div className={styles.toolbar}>
         <Button view="text" size={40} onClick={() => { void navigate(ROUTES.credits) }}>Все договоры</Button>
-        <Button view="secondary" size={40} loading={contract.isFetching}
-          onClick={() => { void contract.refetch() }}>Обновить договор</Button>
+        <TooltipDesktop content="Обновить договор" position="bottom">
+          <IconButton type="button" view="secondary" size={40}
+            icon={<ArrowsCwMIcon aria-hidden="true" />} aria-label="Обновить договор"
+            aria-busy={contract.isFetching} loading={contract.isFetching} disabled={contract.isFetching}
+            onClick={() => { void contract.refetch() }} />
+        </TooltipDesktop>
       </div>
       {contract.error && <RequestState error={contract.error} retry={() => { void contract.refetch() }} />}
       {!contract.data && !contract.error && <RequestState>Загружаем договор...</RequestState>}
@@ -140,6 +150,7 @@ function SelectedContract({ id }: { id: number }) {
 
 /** All signed contracts, including expired ones, and their separately fetched details. */
 export function ContractOverview() {
+  const headingId = useId()
   const { contractId } = useParams<{ contractId: string }>()
   const navigate = useNavigate()
   const contracts = useContracts(contractId === undefined)
@@ -163,25 +174,59 @@ export function ContractOverview() {
       ) : (
         <ul className={styles.contracts}>
           {contracts.data.map((contract) => (
-            <li key={contract.id} className={styles.card}>
+            <li key={contract.id} className={styles.card} aria-labelledby={`${headingId}-${contract.id}`}>
               <PureCell tag="div" direction="horizontal" verticalPadding="none">
                 <PureCell.Content>
                   <PureCell.Main>
-                    <PureCell.Text titleColor="primary" view="component-primary" value={contract.status === 'ACTIVE' ? 'Действует' : 'Срок истёк'}>
-                      Договор № {contract.id}
+                    <PureCell.Text titleColor="primary" view="component-primary" value={
+                      <Status color={contract.status === 'ACTIVE' ? 'green' : 'orange'} view="muted"
+                        size={24} shape="rounded" uppercase={false}
+                        leftAddons={contract.status === 'ACTIVE'
+                          ? <CheckmarkCircleSIcon aria-hidden="true" /> : <ClockSIcon aria-hidden="true" />}>
+                        {contract.status === 'ACTIVE' ? 'Действует' : 'Срок истёк'}
+                      </Status>
+                    }>
+                      <Typography.TitleResponsive id={`${headingId}-${contract.id}`} tag="h2" view="small" font="system">
+                        Договор № {contract.id}
+                      </Typography.TitleResponsive>
                     </PureCell.Text>
                     <PureCell.Text titleColor="secondary" view="primary-small" rowLimit={2}>
                       {contract.contractTermMonths} мес. · С {formatDate(contract.startDate)} до {formatDate(contract.endDate)}
                     </PureCell.Text>
-                    <PureCell.Text titleColor="primary" view="primary-small" rowLimit={2}>
-                      Лимит {formatMoney(contract.limit, { exact: true })} · Доступно {formatMoney(contract.availableLimit, { exact: true })}
-                    </PureCell.Text>
-                    <PureCell.Text titleColor="secondary" view="primary-small">
-                      Основной долг: {formatMoney(contract.outstandingPrincipal, { exact: true })}
-                    </PureCell.Text>
                   </PureCell.Main>
+                  <div className={styles.summaryBody}>
+                      <div className={styles.summaryBalance}>
+                        <div className={styles.availableBalance}>
+                          <Typography.Text view="primary-small" color="secondary">Доступный лимит</Typography.Text>
+                          <PureCell.Amount value={Math.round(contract.availableLimit * 100)} minorUnits={100}
+                            currency="RUR" view="default" textView="component-primary" weight="bold" color="primary" />
+                        </div>
+                        <dl className={styles.summaryMetrics}>
+                          <div>
+                            <dt><Typography.Text view="primary-small" color="secondary">Лимит договора</Typography.Text></dt>
+                            <dd><Typography.Text weight="medium">{formatMoney(contract.limit, { exact: true })}</Typography.Text></dd>
+                          </div>
+                          <div>
+                            <dt><Typography.Text view="primary-small" color="secondary">Основной долг</Typography.Text></dt>
+                            <dd><Typography.Text weight="medium">{formatMoney(contract.outstandingPrincipal, { exact: true })}</Typography.Text></dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <dl className={styles.summaryTerms}>
+                        <div>
+                          <dt><Typography.Text view="primary-small" color="secondary">Срок каждого транша</Typography.Text></dt>
+                          <dd><Typography.Text weight="medium">{contract.trancheTerms.termDays} дней</Typography.Text></dd>
+                        </div>
+                        <div>
+                          <dt><Typography.Text view="primary-small" color="secondary">Ставка по договору</Typography.Text></dt>
+                          <dd><Typography.Text weight="medium">{contract.trancheTerms.ratePercent === null
+                            ? 'Ставка недоступна' : `${String(contract.trancheTerms.ratePercent).replace('.', ',')}% годовых`}</Typography.Text></dd>
+                        </div>
+                      </dl>
+                  </div>
                   <PureCell.Footer>
-                    <PureCell.FooterButton view="secondary" size={48}
+                    <PureCell.FooterButton view="primary" size={48} rightAddons={<ArrowRightMIcon aria-hidden="true" />}
+                      aria-label={`Договор и транши: договор № ${contract.id}`}
                       onClick={() => { void navigate(ROUTES.contract(String(contract.id))) }}>
                       Договор и транши
                     </PureCell.FooterButton>

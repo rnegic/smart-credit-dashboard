@@ -2,6 +2,7 @@ package alfa.smartcredit.service;
 
 import alfa.smartcredit.dto.AssistantRequest;
 import alfa.smartcredit.dto.AssistantResponse;
+import alfa.smartcredit.dto.ContractView;
 import alfa.smartcredit.dto.DashboardResponse;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.enums.RevenueTrend;
@@ -108,10 +109,14 @@ class AssistantServiceTest {
             assertEquals("IP", facts.at("/company/legalForm").asText());
             assertEquals("62.01", facts.at("/company/mainOkved").asText());
             assertEquals("OFFER_READY", facts.at("/latestApplication/status").asText());
-            assertEquals(500000, facts.at("/latestApplication/requestedAmount").asInt());
+            assertEquals(500000, facts.at("/latestApplication/requestedLimit").asInt());
+            assertEquals(60, facts.at("/latestApplication/trancheTermDays").asInt());
+            assertEquals(90, facts.at("/activeContract/trancheTerms/termDays").asInt());
+            assertEquals(18.5, facts.at("/activeContract/trancheTerms/ratePercent").asDouble());
+            assertTrue(facts.at("/activeContract/trancheTerms").isObject());
             assertEquals("ALTERNATIVE_OFFER", facts.at("/latestApplication/decision").asText());
             assertEquals("ACCEPT_OFFER", facts.at("/requiredActions/0/code").asText());
-            assertEquals(450000, facts.at("/offers/0/amount").asInt());
+            assertEquals(450000, facts.at("/offers/0/limit").asInt());
             assertEquals(230000, facts.at("/activeLoan/remainingBalance").asInt());
             assertEquals("2026-11-15", facts.at("/nextPayment/dueDate").asText());
             assertEquals(3, facts.at("/productRules/termDays").size());
@@ -145,12 +150,12 @@ class AssistantServiceTest {
     @Test
     void reloadsDashboardAndDoesNotInferIssuedLoanFromAcceptedStatus() {
         DashboardResponse original = snapshot();
-        var accepted = new DashboardResponse.ApplicationDto(71L, new BigDecimal("100000"), 30, null,
+        var accepted = new DashboardResponse.ApplicationDto(71L, new BigDecimal("100000"), 30, 12, null,
                 null, "ACCEPTED", "APPROVED", new BigDecimal("24.5"), null, Instant.now());
         var noLoan = new DashboardResponse(original.company(), accepted,
                 List.of(new DashboardResponse.StageDto("ISSUED", "Выдача кредита", "DONE")),
-                List.of(), List.of(), null, null, 0);
-        var noApplication = new DashboardResponse(original.company(), null, List.of(), List.of(), List.of(), null, null, 0);
+                List.of(), List.of(), null, null, null, 0);
+        var noApplication = new DashboardResponse(original.company(), null, List.of(), List.of(), List.of(), null, null, null, 0);
         when(dashboard.build(42L)).thenReturn(noLoan, noApplication);
         List<JsonNode> snapshots = new ArrayList<>();
         provider.expect(ExpectedCount.twice(), requestTo(URL))
@@ -171,7 +176,7 @@ class AssistantServiceTest {
         var company = new DashboardResponse.CompanyDto(42L, "PRIVATE_NAME", "770112233445", "PRIVATE_OKVED", null, null);
         var source = snapshot();
         when(dashboard.build(42L)).thenReturn(new DashboardResponse(company, null, List.of(), List.of(),
-                Collections.nCopies(100, source.offers().getFirst()), null, null, 0));
+                Collections.nCopies(100, source.offers().getFirst()), null, null, null, 0));
         provider.expect(requestTo(URL)).andExpect(http -> {
             JsonNode facts = facts(body((MockClientHttpRequest) http));
             assertEquals(5, facts.path("offers").size());
@@ -235,6 +240,29 @@ class AssistantServiceTest {
     void rejectsMalformedEmptyUnsafeOrTruncatedOutput(String envelope) {
         respond(envelope);
         assertError(HttpStatus.BAD_GATEWAY, "AI_BAD_RESPONSE", () -> service.answer(42L, request()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {401, 429, 500, 502, 503, 504})
+    void treatsProviderErrorInsideHttp200AsUnavailableRatherThanMalformedAnswer(int code) {
+        respond(MAPPER.writeValueAsString(Map.of("error", Map.of("code", code, "message", "PRIVATE_PROVIDER_ERROR"))));
+        assertError(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", () -> service.answer(42L, request()));
+    }
+
+    @Test
+    void clearsCompanyPermitAfterWrappedProviderFailureSoManualRetryCanSucceed() {
+        respond("{\"error\":{\"code\":503,\"message\":\"PRIVATE_PROVIDER_ERROR\"}}");
+        respond(envelope("{\"answer\":\"Ответ\"}"));
+        assertError(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", () -> service.answer(42L, request()));
+        assertEquals(new AssistantResponse("Ответ", null), service.answer(42L, request()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {429, 503})
+    void prefillAlsoTreatsWrappedProviderFailureAsUnavailable(int code) {
+        respond(MAPPER.writeValueAsString(Map.of("error", Map.of("code", code, "message", "PRIVATE_PROVIDER_ERROR"))));
+        var extraction = new AiExtractionService(client, MAPPER, "test-key", "test-model", "json_object");
+        assertError(HttpStatus.SERVICE_UNAVAILABLE, "AI_UNAVAILABLE", () -> extraction.extract("Тестовый запрос"));
     }
 
     static Stream<String> badEnvelopes() {
@@ -468,13 +496,17 @@ class AssistantServiceTest {
         return new DashboardResponse(
                 new DashboardResponse.CompanyDto(913000001L, "PRIVATE_NAME", "770112233445", "62.01", "IP",
                         new DashboardResponse.ExternalDemoDto(800, 1, 2, RevenueTrend.GROWING, 5)),
-                new DashboardResponse.ApplicationDto(913000002L, new BigDecimal("500000"), 60,
+                new DashboardResponse.ApplicationDto(913000002L, new BigDecimal("500000"), 60, 12,
                         new BigDecimal("24.75"), "PRIVATE_PURPOSE", "OFFER_READY", "ALTERNATIVE_OFFER",
                         new BigDecimal("25.1"), "PRIVATE_SCALE", Instant.parse("2026-10-01T00:00:00Z")),
                 List.of(new DashboardResponse.StageDto("OFFER", "Предложение банка", "CURRENT")),
                 List.of(new DashboardResponse.ActionDto("ACCEPT_OFFER", "Принять условия предложения")),
-                List.of(new DashboardResponse.OfferDto(913000003L, new BigDecimal("450000"), 60,
+                List.of(new DashboardResponse.OfferDto(913000003L, new BigDecimal("450000"), 60, 12,
                         new BigDecimal("25.1"), new BigDecimal("240000"), LocalDate.of(2026, 11, 1))),
+                new ContractView(9L, 7L, "ACTIVE", 12, LocalDate.of(2026, 10, 25), LocalDate.of(2027, 10, 25),
+                        new BigDecimal("500000"), BigDecimal.ZERO, new BigDecimal("500000"), false,
+                        BigDecimal.ZERO, new BigDecimal("1000"), true, null,
+                        new ContractView.TrancheTerms(90, new BigDecimal("18.5"), LocalDate.of(2027, 1, 23), true), List.of()),
                 new DashboardResponse.LoanDto(913000004L, new BigDecimal("300000"), new BigDecimal("24"), 3,
                         new BigDecimal("100000"), new BigDecimal("230000"), LocalDate.of(2026, 10, 15)),
                 new DashboardResponse.PaymentDto(913000005L, LocalDate.of(2026, 11, 15), new BigDecimal("100000")), 999);

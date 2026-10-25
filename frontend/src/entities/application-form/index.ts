@@ -221,7 +221,7 @@ export const applicationFormSubmissionSchema = applicationFormSchema.extend({
       .min(50_000, 'Минимальная сумма 50 000 ₽')
       .max(20_000_000, 'Максимальная сумма 20 000 000 ₽'),
     termDays: z.union([z.literal(30), z.literal(60), z.literal(90)], {
-      error: 'Выберите ориентировочный срок транша 30, 60 или 90 дней',
+      error: 'Выберите срок транша 30, 60 или 90 дней',
     }),
     contractTermMonths: z.union([z.literal(6), z.literal(12), z.literal(24)], {
       error: 'Выберите срок договора 6, 12 или 24 месяца',

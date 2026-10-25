@@ -81,8 +81,14 @@ export const dashboardSchema = z.object({
     revolving: z.boolean(),
     canIssueTranche: z.boolean(),
     issueBlockedReason: z.enum([
-      'CONTRACT_EXPIRED', 'HAS_OVERDUE_TRANCHE', 'LIMIT_EXHAUSTED', 'CONTRACT_ENDING',
+      'CONTRACT_EXPIRED', 'HAS_OVERDUE_TRANCHE', 'LIMIT_EXHAUSTED', 'CONTRACT_ENDING', 'RATE_UNAVAILABLE',
     ]).nullable(),
+    trancheTerms: z.object({
+      termDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
+      ratePercent: z.number().nonnegative().nullable(),
+      dueDate: z.iso.date(),
+      available: z.boolean(),
+    }),
   }).nullable(),
   activeLoan: z
     .object({

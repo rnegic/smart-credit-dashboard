@@ -40,22 +40,16 @@ const actions = [
   { value: 'DECLINE', label: 'Отказать', Icon: CrossMIcon },
 ] as const
 
-const termOptions = [30, 60, 90].map((days) => ({
-  key: String(days),
-  content: `${days} дней`,
-}))
-
 const contractTermOptions = [6, 12, 24].map((months) => ({
   key: String(months),
   content: `${months} мес.`,
 }))
 
-type Field = 'action' | 'comment' | 'amount' | 'termDays' | 'contractTermMonths' | 'finalRate'
+type Field = 'action' | 'comment' | 'amount' | 'contractTermMonths' | 'finalRate'
 
 type SuggestionBody = {
   action: 'APPROVE' | 'OFFER_ALTERNATIVE' | 'DECLINE'
   amount?: number
-  termDays?: 30 | 60 | 90
   contractTermMonths?: ContractTermMonths
   finalRate?: number
 }
@@ -69,13 +63,11 @@ export function DecisionForm({
 }: DecisionFormProps) {
   const id = useId()
   const formRef = useRef<HTMLFormElement>(null)
-  const termRef = useRef<HTMLDivElement>(null)
   const contractTermRef = useRef<HTMLDivElement>(null)
   const [action, setAction] = useState<Decision['action'] | ''>('')
   const [values, setValues] = useState({
     comment: '',
     amount: '',
-    termDays: '',
     contractTermMonths: '',
     finalRate: '',
   })
@@ -103,12 +95,6 @@ export function DecisionForm({
       const amount = parseNumber(values.amount)
       if (amount !== null && amount >= 50_000 && amount <= 20_000_000)
         body.amount = amount
-      if (
-        values.termDays === '30' ||
-        values.termDays === '60' ||
-        values.termDays === '90'
-      )
-        body.termDays = Number(values.termDays) as 30 | 60 | 90
       if (
         values.contractTermMonths === '6' ||
         values.contractTermMonths === '12' ||
@@ -139,7 +125,7 @@ export function DecisionForm({
     event.preventDefault()
     if (disabled || pending) return
     if (action && action !== 'DECLINE' && requiresManualRate && !values.finalRate.trim()) {
-      setErrors({ finalRate: 'Укажите ставку для ориентировочного транша: сервер не передал расчётную ставку для этой заявки' })
+      setErrors({ finalRate: 'Укажите ставку по договору: сервер не передал расчётную ставку для этой заявки' })
       formRef.current?.querySelector<HTMLElement>('[name="finalRate"]')?.focus()
       return
     }
@@ -153,7 +139,6 @@ export function DecisionForm({
           field === 'action' ||
           field === 'comment' ||
           field === 'amount' ||
-          field === 'termDays' ||
           field === 'contractTermMonths' ||
           field === 'finalRate'
         ) {
@@ -163,8 +148,7 @@ export function DecisionForm({
       }
       setErrors(nextErrors)
       const firstField = Object.keys(nextErrors)[0]
-      if (firstField === 'termDays') termRef.current?.focus()
-      else if (firstField === 'contractTermMonths') contractTermRef.current?.focus()
+      if (firstField === 'contractTermMonths') contractTermRef.current?.focus()
       else if (firstField) {
         formRef.current
           ?.querySelector<HTMLElement>(`[name="${firstField}"]`)
@@ -239,11 +223,11 @@ export function DecisionForm({
               <dd>{application.contractTermMonths} мес.</dd>
             </div>
             <div>
-              <dt>Ориентировочный срок транша</dt>
+              <dt>Срок транша</dt>
               <dd>{application.termDays} дней</dd>
             </div>
             <div>
-              <dt>Ставка для ориентировочного транша при одобрении</dt>
+              <dt>Ставка по договору при одобрении</dt>
               <dd>
                 {recommendedRate == null
                   ? requiresManualRate ? 'Укажите ставку вручную' : 'Рассчитает сервер при сохранении'
@@ -261,7 +245,7 @@ export function DecisionForm({
           </dl>
           <Input
             name="finalRate"
-            label="Ставка для ориентировочного транша, % годовых"
+            label="Ставка по договору, % годовых"
             labelView="outer"
             inputMode="decimal"
             required={requiresManualRate}
@@ -275,13 +259,16 @@ export function DecisionForm({
             block
           />
           <p className={styles.note}>
-            Лимит, срок договора и ориентировочный срок транша соответствуют
-            заявке. Указанная сотрудником ставка имеет приоритет.
+            Лимит, срок договора и срок транша соответствуют заявке.
+            Срок транша выбран клиентом на первом шаге и не меняется банком;
+            после одобрения он фиксируется в индивидуальных условиях договора.
+            Указанная сотрудником ставка имеет приоритет.
             Без неё сервер использует рекомендацию или тарифную
             матрицу; при отсутствии расчётной ставки требуется ручной ввод.
             Показанный платёж скоринга рассчитан по базовой ставке, если взять
             весь лимит одним траншем на {application.termDays} дней, а не по
-            ставке предложения. Пример платежа предложения рассчитает сервер.
+            ставке предложения. Это не график погашения. Пример платежа
+            предложения рассчитает сервер.
             Просмотр условий не отправляет предложение клиенту.
           </p>
         </section>
@@ -294,6 +281,11 @@ export function DecisionForm({
           <h3 id={`${id}-alternative-title`} className={styles.sectionTitle}>
             Другие условия предложения
           </h3>
+          <p className={styles.note}>
+            Срок транша: <strong>{application.termDays} дней</strong>.
+            Выбран клиентом на первом шаге заявки и не меняется банком.
+            После одобрения фиксируется в индивидуальных условиях договора.
+          </p>
           <Input
             name="amount"
             label="Изменить лимит договора"
@@ -328,27 +320,9 @@ export function DecisionForm({
             disabled={disabled || pending}
             block
           />
-          <Select
-            ref={termRef}
-            name="termDays"
-            label="Изменить ориентировочный срок транша, дней"
-            labelView="outer"
-            options={termOptions}
-            selected={values.termDays || null}
-            onChange={({ selected }) =>
-              changeField('termDays', selected?.key ?? '')
-            }
-            allowUnselect
-            clear={values.termDays !== ''}
-            onClear={() => changeField('termDays', '')}
-            error={errors.termDays}
-            hint={`Необязательно. Без изменения: ${application.termDays} дней из заявки. Можно выбрать 30, 60 или 90 дней.`}
-            disabled={disabled || pending}
-            block
-          />
           <Input
             name="finalRate"
-            label="Изменить ставку для ориентировочного транша, % годовых"
+            label="Изменить ставку по договору, % годовых"
             labelView="outer"
             inputMode="decimal"
             required={requiresManualRate}
@@ -365,24 +339,14 @@ export function DecisionForm({
             disabled={disabled || pending}
             block
           />
-          {values.termDays !== '' &&
-            values.termDays !== String(application.termDays) &&
-            values.finalRate.trim() === '' &&
-            recommendedRate != null && (
-              <p className={styles.warning} role="status">
-                Ориентировочный срок транша изменён, но ставка не задана.
-                Сервер использует ставку из рекомендации {recommendedRate}%
-                без пересчёта под новый срок транша.
-                Укажите ставку вручную, если требуется её изменить.
-              </p>
-            )}
           <p className={styles.note}>
-            Лимит и сроки можно оставить без изменений. Пустой срок договора
+            Лимит и срок договора можно оставить без изменений. Пустой срок договора
             берётся из заявки. Ставка обязательна, если
             сервер не может её рассчитать. Пустые поля не отправляются;
             сервер применит доступные значения по умолчанию. Пример платежа
-            для всего лимита одним траншем рассчитает сервер; скоринг исходной
-            заявки здесь не пересчитывается.
+            для всего лимита одним траншем на {application.termDays} дней
+            рассчитает сервер; это не график погашения. Скоринг исходной заявки
+            здесь не пересчитывается.
           </p>
         </section>
       )}

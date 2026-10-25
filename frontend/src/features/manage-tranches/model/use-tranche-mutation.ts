@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { isCurrentSession } from '@/entities/session'
-import type { Tranche } from '@/entities/contract'
+import { contractIssueBlockedLabels, type Tranche } from '@/entities/contract'
 import { ApiError, useApiScope, useSessionTransition } from '@/shared/api'
 
 /** Fence financial actions and refresh private data only for their original session. */
@@ -34,13 +34,13 @@ export function isIssuanceUncertain(error: Error | null) {
 /** Known backend codes remain readable even if a server message is unavailable. */
 export function getTrancheErrorMessage(error: Error) {
   const messages: Record<string, string> = {
+    ...contractIssueBlockedLabels,
     CONTRACT_NOT_ACTIVE: 'Договор ещё не подписан. Получить транш пока нельзя.',
     CONTRACT_EXPIRED: 'Срок договора истёк. Новые транши недоступны.',
     HAS_OVERDUE_TRANCHE: 'Сначала погасите просроченные транши.',
     TRANCHE_AMOUNT_TOO_SMALL: 'Сумма меньше минимальной суммы транша.',
     LIMIT_EXCEEDED: 'Сумма превышает доступный лимит договора.',
-    TRANCHE_EXCEEDS_CONTRACT: 'Срок транша выходит за дату окончания договора. Выберите меньший срок.',
-    RATE_UNAVAILABLE: 'Ставка для выбранного срока недоступна. Обновите условия или выберите другой срок.',
+    TRANCHE_EXCEEDS_CONTRACT: contractIssueBlockedLabels.CONTRACT_ENDING,
   }
   return error instanceof ApiError
     ? messages[error.code] ?? error.message

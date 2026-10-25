@@ -9,11 +9,8 @@ import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Формирует два демонстрационных текста из сохранённых реквизитов и финального Offer.
@@ -21,15 +18,16 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DocumentService {
+    /** Version of the document pair with fixed contract-wide tranche terms. */
+    public static final String VERSION = "2";
 
     public List<DocumentDto> buildDocuments(Company company, CreditApplication app, Offer offer) {
         Applicant ap = resolveApplicant(company, app);
-        Map<Integer, BigDecimal> rates = trancheRates(company, app, offer);
         return List.of(
                 new DocumentDto("OVERDRAFT_AGREEMENT", "Договор овердрафта",
-                        buildOverdraftAgreement(app, offer, ap, rates)),
+                        buildOverdraftAgreement(app, offer, ap)),
                 new DocumentDto("INDIVIDUAL_TERMS", "Индивидуальные условия",
-                        buildIndividualTerms(app, offer, ap, rates)));
+                        buildIndividualTerms(app, offer, ap)));
     }
 
     private record Applicant(String name, String inn, String ogrn, String ogrnip, String kpp, String type) {}
@@ -66,7 +64,7 @@ public class DocumentService {
         return new Applicant(name, company.getInn(), ogrn, ogrnip, kpp, type);
     }
 
-    private String buildOverdraftAgreement(CreditApplication app, Offer offer, Applicant ap, Map<Integer, BigDecimal> rates) {
+    private String buildOverdraftAgreement(CreditApplication app, Offer offer, Applicant ap) {
         StringBuilder sb = new StringBuilder();
         sb.append("ДОГОВОР ОВЕРДРАФТА\n");
         sb.append("========================================\n\n");
@@ -80,12 +78,13 @@ public class DocumentService {
         sb.append("Срок договора: ").append(contractTerm(offer)).append(" мес. с даты подписания\n");
         sb.append("Лимит договора: ").append(money(offer.getAmount())).append("\n");
         sb.append(LIMIT_RULE).append("\n");
-        sb.append("Срок каждого транша: 30, 60 или 90 дней, выбирается Заёмщиком при получении транша\n");
+        sb.append("Срок каждого транша: ").append(termDays(offer)).append(" дней\n");
+        sb.append("Срок выбран в заявке и установлен индивидуальными условиями; при получении транша не меняется\n");
         sb.append("Сумма транша: любая, от ").append(money(ProductRules.MIN_TRANCHE_AMOUNT))
                 .append(" до доступного остатка лимита\n");
         sb.append("Транш погашается не позднее даты окончания его срока; срок транша не может выходить за срок договора\n");
-        sb.append("Ставка по траншу (годовых): ").append(ratesLine(rates)).append("\n");
-        sb.append("Ставка фиксируется на дату получения транша и действует до его погашения\n");
+        sb.append("Ставка по каждому траншу (годовых): ").append(pct(offer.getRatePercent())).append("%\n");
+        sb.append("Срок и ставка установлены банком после одобрения заявки и предъявлены Заёмщику до подписания договора\n");
         if (offer.getValidUntil() != null)
             sb.append("Предложение действует до: ").append(offer.getValidUntil()).append("\n");
         sb.append("\nНастоящий документ является демонстрационным и не имеет юридической силы. ")
@@ -93,7 +92,7 @@ public class DocumentService {
         return sb.toString();
     }
 
-    private String buildIndividualTerms(CreditApplication app, Offer offer, Applicant ap, Map<Integer, BigDecimal> rates) {
+    private String buildIndividualTerms(CreditApplication app, Offer offer, Applicant ap) {
         StringBuilder sb = new StringBuilder();
         sb.append("ИНДИВИДУАЛЬНЫЕ УСЛОВИЯ\n");
         sb.append("=============================================\n\n");
@@ -104,10 +103,11 @@ public class DocumentService {
         sb.append(" - Лимит договора: ").append(money(offer.getAmount())).append("\n");
         sb.append(" - Срок договора: ").append(contractTerm(offer)).append(" мес.\n");
         sb.append(" - Количество траншей: не ограничено, пока не исчерпан лимит\n");
-        sb.append(" - Срок транша: 30, 60 или 90 дней (на выбор Заёмщика)\n");
+        sb.append(" - Срок каждого транша: ").append(termDays(offer)).append(" дней, выбран в заявке и фиксирован на весь срок договора\n");
         sb.append(" - Сумма транша: от ").append(money(ProductRules.MIN_TRANCHE_AMOUNT))
                 .append(" до доступного остатка лимита\n");
-        sb.append(" - Процентная ставка по траншу (годовых): ").append(ratesLine(rates)).append("\n");
+        sb.append(" - Процентная ставка по каждому траншу (годовых): ").append(pct(offer.getRatePercent())).append("%\n");
+        sb.append(" - При получении транша Заёмщик указывает только сумму; срок и ставка повторно не выбираются\n");
         sb.append(" - Расчёт процентов: сумма транша × ставка × фактическое число дней / 365\n");
         sb.append(" - ").append(LIMIT_RULE).append("\n");
         if (offer.getAmount() != null && offer.getRatePercent() != null && termDays(offer) != null)
@@ -122,23 +122,6 @@ public class DocumentService {
             ? "Использование лимита: после погашения транша его сумма снова становится доступной"
             : "Использование лимита: сумма всех выданных траншей за срок договора не может превышать лимит; "
                     + "погашение транша лимит не восстанавливает";
-
-    /** Ставка транша на каждый срок: базовая ставка по сроку + надбавка договора. */
-    private Map<Integer, BigDecimal> trancheRates(Company company, CreditApplication app, Offer offer) {
-        Map<Integer, BigDecimal> res = new LinkedHashMap<>();
-        BigDecimal spread = offer.getRateSpread() == null ? BigDecimal.ZERO : offer.getRateSpread();
-        for (int d : ProductRules.TERM_DAYS.stream().sorted().toList()) {
-            BigDecimal base = ProductRules.baseRate(company.getLegalForm(), app.getBusinessScale(), d);
-            res.put(d, base == null ? null : base.add(spread).max(BigDecimal.ZERO));
-        }
-        return res;
-    }
-
-    private static String ratesLine(Map<Integer, BigDecimal> rates) {
-        return rates.entrySet().stream()
-                .map(e -> e.getKey() + " дн. - " + (e.getValue() == null ? "—" : pct(e.getValue()) + "%"))
-                .collect(Collectors.joining("; "));
-    }
 
     private static Integer contractTerm(Offer o) {
         return o.getContractTermMonths() != null ? o.getContractTermMonths() : 12;

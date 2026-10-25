@@ -8,3 +8,25 @@
 .form p {
   margin: var(--gap-0);
 }
+
+.parameters {
+  display: grid;
+  gap: var(--gap-16);
+  margin: var(--gap-0);
+}
+
+.parameters > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--gap-8) var(--gap-16);
+}
+
+.parameters dt {
+  color: var(--color-light-text-secondary);
+}
+
+.parameters dd {
+  margin: var(--gap-0);
+  font-variant-numeric: tabular-nums;
+}

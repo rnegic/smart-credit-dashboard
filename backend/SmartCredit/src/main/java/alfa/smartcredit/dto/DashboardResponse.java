@@ -64,7 +64,7 @@ public record DashboardResponse(
             Long id,
             @Schema(description = "Запрошенный лимит договора, ₽", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Ориентировочный срок транша в днях", example = "60")
+            @Schema(description = "Запрошенный на первом шаге срок каждого транша в днях", example = "60")
             Integer termDays,
             @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
             Integer contractTermMonths,
@@ -106,13 +106,13 @@ public record DashboardResponse(
             Long id,
             @Schema(description = "Лимит договора, ₽", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Ориентировочный срок транша в днях", example = "60")
+            @Schema(description = "Фиксированный срок каждого транша в индивидуальных условиях, дней", example = "60")
             Integer termDays,
             @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
             Integer contractTermMonths,
-            @Schema(description = "Ставка для ориентировочного срока транша, %", example = "18.5")
+            @Schema(description = "Годовая ставка каждого транша в индивидуальных условиях, %", example = "18.5")
             BigDecimal finalRate,
-            @Schema(description = "Ежемесячный платёж, ₽", example = "84917.32")
+            @Schema(description = "Пример платежа при получении всего лимита одним траншем, ₽", example = "84917.32")
             BigDecimal monthlyPayment,
             @Schema(description = "Оферта действует до", example = "2027-01-23")
             LocalDate validUntil) {}

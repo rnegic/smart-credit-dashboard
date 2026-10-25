@@ -36,21 +36,21 @@ public record ContractView(
         @Schema(description = "Можно ли сейчас получить новый транш")
         boolean canIssueTranche,
         @Schema(description = "Причина, по которой транш получить нельзя; null, если можно",
-                allowableValues = {"CONTRACT_EXPIRED", "HAS_OVERDUE_TRANCHE", "LIMIT_EXHAUSTED", "CONTRACT_ENDING"})
+                allowableValues = {"CONTRACT_EXPIRED", "HAS_OVERDUE_TRANCHE", "LIMIT_EXHAUSTED", "CONTRACT_ENDING", "RATE_UNAVAILABLE"})
         String issueBlockedReason,
-        @Schema(description = "Варианты срока транша с рассчитанной ставкой на сегодня")
-        List<TermOption> trancheTerms,
+        @Schema(description = "Единые условия всех новых траншей, установленные в одобренном договоре")
+        TrancheTerms trancheTerms,
         @Schema(description = "Транши договора, новые сверху")
         List<TrancheView> tranches) {
 
-    @Schema(description = "Вариант срока транша")
-    public record TermOption(
-            @Schema(description = "Срок, дней", example = "30")
+    @Schema(description = "Фиксированные условия транша из договора")
+    public record TrancheTerms(
+            @Schema(description = "Срок каждого транша, выбранный на первом шаге заявки, дней", example = "30")
             Integer termDays,
-            @Schema(description = "Годовая ставка транша на этот срок, %", example = "24.50")
+            @Schema(description = "Годовая ставка, зафиксированная в индивидуальных условиях, %", example = "24.50")
             BigDecimal ratePercent,
             @Schema(description = "Дата погашения, если взять транш сегодня", example = "2026-11-24")
             LocalDate dueDate,
-            @Schema(description = "false - транш на этот срок закончился бы после окончания договора")
+            @Schema(description = "Укладывается ли фиксированный срок транша в оставшийся срок договора")
             boolean available) {}
 }

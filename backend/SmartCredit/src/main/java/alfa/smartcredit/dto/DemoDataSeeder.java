@@ -145,19 +145,18 @@ public class DemoDataSeeder implements ApplicationRunner {
                 o.setTermDays(a.getTermDays());
                 o.setTermMonths(ProductRules.termMonthsRoundedUp(a.getTermDays()));
                 o.setContractTermMonths(a.getContractTermMonths());
-                BigDecimal baseForTerm = ProductRules.baseRate(c.getLegalForm(), a.getBusinessScale(), a.getTermDays());
-                o.setRateSpread(baseForTerm == null ? BigDecimal.ZERO : finalRate.subtract(baseForTerm));
                 o.setRatePercent(finalRate);
                 o.setMonthlyPayment(scoringService.monthlyPayment(a.getAmount(), finalRate, a.getTermDays()));
                 o.setValidUntil(LocalDate.now().plusDays(90));
                 o.setStatus(OfferStatus.ACTIVE);
                 o.setDocuments(mapper.valueToTree(documentService.buildDocuments(c, a, o)));
-                o.setDocumentVersion("1");
+                o.setDocumentVersion(DocumentService.VERSION);
                 offerRepository.save(o);
 
                 notify(c.getId(), String.format(
                         "По заявке №%d одобрен лимит овердрафта %s на %d мес. Ставка для транша на %d дн.: %s%%. "
-                                + "Подпишите договор в личном кабинете, после этого можно брать транши на 30, 60 или 90 дней.",
+                                + "Срок каждого транша зафиксирован в индивидуальных условиях. "
+                                + "После подписания договора при получении транша укажите только сумму.",
                         a.getId(), money(a.getAmount()), a.getContractTermMonths(), a.getTermDays(), pct(finalRate)),
                         false, created.plus(3, ChronoUnit.HOURS));
             }

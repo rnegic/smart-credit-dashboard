@@ -231,10 +231,6 @@ export function ApplicationOverview({
                 <dt>Сумма кредита</dt>
                 <dd>{formatMoney(loan.principal)}</dd>
               </div>
-              <div>
-                <dt>Ежемесячный платёж</dt>
-                <dd>{formatMoney(loan.monthlyPayment)}</dd>
-              </div>
               {payment && (
                 <>
                   <div>
@@ -355,8 +351,7 @@ export function ApplicationOverview({
         application.decision === 'ALTERNATIVE_OFFER' ||
         (offer &&
            (offer.amount !== application.amount ||
-            offer.contractTermMonths !== application.contractTermMonths ||
-             offer.termDays !== application.termDays))
+             offer.contractTermMonths !== application.contractTermMonths))
           ? 'Банк предложил другие условия'
           : 'Банк подготовил предложение',
       description: canAcceptOffer
@@ -431,7 +426,7 @@ export function ApplicationOverview({
           <dd>{application.contractTermMonths == null ? 'Не указан' : `${application.contractTermMonths} мес.`}</dd>
         </div>
         <div>
-          <dt>Ориентировочный срок транша</dt>
+          <dt>Срок транша</dt>
           <dd>{application.termDays} дней</dd>
         </div>
         <div>
@@ -496,7 +491,7 @@ export function ApplicationOverview({
               <dd>{scoring.amountToRevenue}</dd>
             </div>
             <div>
-              <dt>Платёж скоринга по базовой ставке</dt>
+              <dt>Пример платежа скоринга по базовой ставке</dt>
               <dd>
                 {scoring.newMonthlyPayment == null
                   ? 'Нет расчёта'
@@ -514,7 +509,9 @@ export function ApplicationOverview({
           </dl>
           <Typography.Text tag="p" color="secondary">
             Скоринг рассчитан сервером для исходной заявки по базовой ставке,
-            а не по ставке предложения. Условия предложения указаны отдельно.
+            а не по ставке предложения. Платёж показан только как пример,
+            если взять весь лимит одним траншем на {application.termDays} дней,
+            а не как график погашения. Условия предложения указаны отдельно.
           </Typography.Text>
         </>
       )}
@@ -623,9 +620,14 @@ export function ApplicationOverview({
                       : 'Просмотрите сохранённые документы и данные подписания.'}
                 </Typography.Text>
                 {offer && (
-                  <Typography.Text tag="p" view="primary-small">
-                    Лимит {formatMoney(offer.amount, { exact: true })} · {offer.contractTermMonths == null ? 'Срок договора не указан' : `Договор ${offer.contractTermMonths} мес.`}
-                  </Typography.Text>
+                  <>
+                    <Typography.Text tag="p" view="primary-small">
+                      Лимит {formatMoney(offer.amount, { exact: true })} · {offer.contractTermMonths == null ? 'Срок договора не указан' : `Договор ${offer.contractTermMonths} мес.`}
+                    </Typography.Text>
+                    <Typography.Text tag="p" view="primary-small">
+                      Срок транша: {offer.termDays} дней · Ставка по договору: {String(offer.finalRate).replace('.', ',')}% годовых
+                    </Typography.Text>
+                  </>
                 )}
                 {offer?.contractStart && offer.contractEnd && (
                   <Typography.Text tag="p" view="primary-small" color="secondary">
@@ -646,7 +648,7 @@ export function ApplicationOverview({
                   </time>
                 </Typography.Text>
                 <Typography.Text tag="p" color="secondary">
-                  Срок договора: {application.contractTermMonths == null ? 'не указан' : `${application.contractTermMonths} мес.`} · Ориентировочный срок транша: {application.termDays} дней
+                  Срок договора: {application.contractTermMonths == null ? 'не указан' : `${application.contractTermMonths} мес.`} · Срок транша: {application.termDays} дней
                   {application.purpose &&
                     ` · ${getApplicationPurposeLabel(application.purpose)}`}
                 </Typography.Text>
@@ -684,10 +686,18 @@ export function ApplicationOverview({
           {awaitingClientChoice && (
             <div className={styles.offerSummary}>
               {offer && (
-                <dl className={styles.offerAmount}>
-                  <dt>Лимит договора от банка</dt>
-                  <dd>{formatMoney(offer.amount, { exact: true })}</dd>
-                </dl>
+                <>
+                  <dl className={styles.offerAmount}>
+                    <dt>Лимит договора от банка</dt>
+                    <dd>{formatMoney(offer.amount, { exact: true })}</dd>
+                  </dl>
+                  <Typography.Text tag="p" view="primary-small">
+                    Срок договора: {offer.contractTermMonths == null ? 'не указан' : `${offer.contractTermMonths} мес.`} · Срок транша: {offer.termDays} дней
+                  </Typography.Text>
+                  <Typography.Text tag="p" view="primary-small">
+                    Ставка по договору: {String(offer.finalRate).replace('.', ',')}% годовых
+                  </Typography.Text>
+                </>
               )}
               {!offer && !providedApplication && applications.isPending && (
                 <div className={styles.offerSkeleton} aria-hidden="true" />
@@ -695,12 +705,11 @@ export function ApplicationOverview({
               {offer && (
                 <Typography.Text tag="p" color="secondary">
                   {offer.amount !== application.amount ||
-                  offer.contractTermMonths !== application.contractTermMonths ||
-                  offer.termDays !== application.termDays
-                    ? 'Лимит или сроки отличаются от заявки. Сравнение доступно в предложении.'
+                   offer.contractTermMonths !== application.contractTermMonths
+                    ? 'Лимит или срок договора отличаются от заявки. Срок транша сохранён с первого шага.'
                     : application.decision === 'ALTERNATIVE_OFFER'
-                      ? 'Банк предложил другие условия. Лимит и сроки сохранены.'
-                      : 'Лимит и сроки соответствуют заявке'}
+                      ? 'Банк предложил другие условия. Лимит и срок договора сохранены; проверьте ставку по договору.'
+                      : 'Лимит и срок договора соответствуют заявке. Срок транша сохранён с первого шага.'}
                 </Typography.Text>
               )}
               {offerState && (

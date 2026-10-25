@@ -1,16 +1,31 @@
 package alfa.smartcredit.service;
 
 import alfa.smartcredit.dto.ApplicationFormDto;
+import alfa.smartcredit.dto.TrancheRequest;
+import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
+import alfa.smartcredit.model.CreditApplication;
+import alfa.smartcredit.model.Offer;
+import alfa.smartcredit.model.Tranche;
 import alfa.smartcredit.model.enums.BkiZone;
 import alfa.smartcredit.model.enums.DecisionStatus;
+import alfa.smartcredit.model.enums.OfferStatus;
 import alfa.smartcredit.model.enums.RevenueTrend;
 import alfa.smartcredit.model.enums.RiskClass;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
+import alfa.smartcredit.repository.CompanyRepository;
+import alfa.smartcredit.repository.OfferRepository;
+import alfa.smartcredit.repository.TrancheRepository;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /** Сценарии из ТЗ (ИП и ООО). Кладётся в src/test/java/alfa/smartcredit/service/. */
 class ScoringScenariosTest {
@@ -41,7 +56,7 @@ class ScoringScenariosTest {
     private static ApplicationFormDto form(String type, String amount, int termDays, String monthlyRevenue,
                                            String debt, String other, String annualRevenue, Integer employees,
                                            ApplicationFormDto.ExternalDataOverride externalData) {
-        var s1 = new ApplicationFormDto.Step1("task", bd(amount), termDays, null, "purpose");
+        var s1 = new ApplicationFormDto.Step1("task", bd(amount), termDays, 12, null, "purpose");
         var applicant = new ApplicationFormDto.Applicant(type, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null);
         var fin = new ApplicationFormDto.Financials(bd(monthlyRevenue), bd(debt),
@@ -208,5 +223,82 @@ class ScoringScenariosTest {
         assertEquals(bd("0.10"), ProductRules.riskPremium(RiskClass.A));
         assertEquals(bd("0.25"), ProductRules.riskPremium(RiskClass.B));
         assertEquals(bd("0.50"), ProductRules.riskPremium(RiskClass.C));
+    }
+
+    @Test void issuedTrancheAndDocumentsUseFixedApprovedTerms() {
+        Offer offer = signedOffer();
+        var issued = contracts(offer).issue(1L, offer.getId(), new TrancheRequest(bd("1000.01")));
+        assertEquals(60, issued.termDays());
+        assertEquals(issued.issuedAt().plusDays(60), issued.dueDate());
+        assertEquals(bd("19.50"), issued.ratePercent());
+        assertEquals(bd("1000.01"), issued.amount());
+
+        Company company = company("OOO", "62.01");
+        company.setName("Тестовая компания");
+        CreditApplication app = new CreditApplication();
+        app.setId(offer.getApplicationId());
+        app.setTermDays(60);
+        for (var document : new DocumentService().buildDocuments(company, app, offer)) {
+            assertTrue(document.content().contains("Срок каждого транша: 60 дней"));
+            assertTrue(document.content().contains("19.50%"));
+            assertFalse(document.content().contains("на выбор"));
+            assertFalse(document.content().contains("30, 60 или 90"));
+        }
+    }
+
+    @Test void fixedSixtyDayTrancheIsBlockedWithFortyFiveDaysLeftInContract() {
+        Offer offer = signedOffer();
+        offer.setContractEnd(LocalDate.now().plusDays(45));
+        ContractService service = contracts(offer);
+        var view = service.toView(offer);
+        assertEquals(60, view.trancheTerms().termDays());
+        assertFalse(view.trancheTerms().available());
+        assertFalse(view.canIssueTranche());
+        assertEquals("CONTRACT_ENDING", view.issueBlockedReason());
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.issue(1L, offer.getId(), new TrancheRequest(bd("1000"))));
+        assertEquals("TRANCHE_EXCEEDS_CONTRACT", error.getCode());
+    }
+
+    @Test void missingContractRateBlocksIssueInsteadOfUsingCurrentRateMatrix() {
+        Offer offer = signedOffer();
+        offer.setRatePercent(null);
+        ContractService service = contracts(offer);
+        assertEquals("RATE_UNAVAILABLE", service.toView(offer).issueBlockedReason());
+        ApiException error = assertThrows(ApiException.class,
+                () -> service.issue(1L, offer.getId(), new TrancheRequest(bd("1000"))));
+        assertEquals("RATE_UNAVAILABLE", error.getCode());
+    }
+
+    private Offer signedOffer() {
+        Offer offer = new Offer();
+        offer.setId(9L);
+        offer.setCompanyId(1L);
+        offer.setApplicationId(7L);
+        offer.setAmount(bd("500000"));
+        offer.setTermDays(60);
+        offer.setTermMonths(2);
+        offer.setContractTermMonths(12);
+        offer.setContractStart(LocalDate.now());
+        offer.setContractEnd(LocalDate.now().plusMonths(12));
+        offer.setSignedAt(Instant.now());
+        offer.setStatus(OfferStatus.ACCEPTED);
+        offer.setRatePercent(bd("19.50"));
+        offer.setRateSpread(bd("10.00"));
+        return offer;
+    }
+
+    private ContractService contracts(Offer offer) {
+        OfferRepository offers = mock(OfferRepository.class);
+        TrancheRepository tranches = mock(TrancheRepository.class);
+        when(offers.findForUpdate(offer.getId())).thenReturn(Optional.of(offer));
+        when(tranches.findByOfferIdOrderByIdDesc(offer.getId())).thenReturn(List.of());
+        when(tranches.save(any(Tranche.class))).thenAnswer(invocation -> {
+            Tranche tranche = invocation.getArgument(0);
+            tranche.setId(71L);
+            return tranche;
+        });
+        return new ContractService(offers, tranches, mock(CompanyRepository.class),
+                mock(ApplicationEventPublisher.class));
     }
 }

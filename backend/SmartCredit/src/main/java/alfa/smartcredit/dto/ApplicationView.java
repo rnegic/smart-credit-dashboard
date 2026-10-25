@@ -20,7 +20,7 @@ public record ApplicationView(
         String legalForm,
         @Schema(description = "Запрошенный лимит договора, ₽", example = "500000")
         BigDecimal amount,
-        @Schema(description = "Ориентировочный срок транша в днях: 30, 60 или 90", example = "60")
+        @Schema(description = "Запрошенный на первом шаге срок каждого транша в днях: 30, 60 или 90", example = "60")
         Integer termDays,
         @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
         Integer contractTermMonths,
@@ -75,11 +75,11 @@ public record ApplicationView(
             Long id,
             @Schema(description = "Лимит договора, ₽: общая сумма траншей за весь срок", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Ориентировочный срок транша в днях (для расчёта ставки и примера платежа)", example = "60")
+            @Schema(description = "Фиксированный срок каждого транша, установленный в индивидуальных условиях, дней", example = "60")
             Integer termDays,
             @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
             Integer contractTermMonths,
-            @Schema(description = "Ставка для ориентировочного срока транша, %", example = "18.5")
+            @Schema(description = "Годовая ставка каждого транша, установленная в индивидуальных условиях, %", example = "18.5")
             BigDecimal finalRate,
             @Schema(description = "Пример платежа, если взять весь лимит одним траншем на termDays, ₽", example = "84917.32")
             BigDecimal monthlyPayment,

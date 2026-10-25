@@ -198,7 +198,7 @@ function decisionForm() {
 }
 
 test('alternative decisions validate 6/12/24 contract months and omit empty overrides', () => {
-  const value = { action: 'OFFER_ALTERNATIVE', comment: 'Reason', amount: '', termDays: '', finalRate: '' }
+  const value = { action: 'OFFER_ALTERNATIVE', comment: 'Reason', amount: '', finalRate: '' }
   for (const months of ['6', '12', '24']) {
     assert.equal(decisionEntity.decisionSchema.parse({ ...value, contractTermMonths: months }).contractTermMonths, Number(months))
   }
@@ -214,9 +214,13 @@ test('alternative decisions validate 6/12/24 contract months and omit empty over
     const result = decisionEntity.decisionSchema.parse({ ...value, action, contractTermMonths: '6' })
     assert.ok(!Object.hasOwn(result, 'contractTermMonths'))
   }
+  for (const action of ['APPROVE', 'OFFER_ALTERNATIVE', 'DECLINE']) {
+    const result = decisionEntity.decisionSchema.parse({ ...value, action, termDays: '90' })
+    assert.ok(!Object.hasOwn(result, 'termDays'), action)
+  }
 })
 
-test('bank contract selector uses Alfa props, application default and independent tranche options', () => {
+test('bank contract selector uses Alfa props and retains the read-only first-step tranche term', () => {
   const h = decisionForm()
   h.action('OFFER_ALTERNATIVE')
   const selector = h.field('contractTermMonths').props
@@ -226,7 +230,12 @@ test('bank contract selector uses Alfa props, application default and independen
   assert.equal(selector.labelView, 'outer')
   assert.equal(selector.block, true)
   assert.equal(h.field('amount').props.label, 'Изменить лимит договора')
-  assert.deepEqual(Array.from(h.field('termDays').props.options, (option) => option.key), ['30', '60', '90'])
+  assert.equal(h.field('termDays'), undefined)
+  const html = renderToStaticMarkup(h.element)
+  assert.ok(html.includes('Срок транша: <strong>60 дней</strong>'))
+  assert.ok(html.includes('Выбран клиентом на первом шаге заявки и не меняется банком'))
+  assert.doesNotMatch(html, /ориентировоч/i)
+  assert.equal(descendants(h.element).filter((element) => element.type === Select).length, 1)
   h.props.pending = true
   h.render()
   assert.equal(h.field('contractTermMonths').props.disabled, true)
@@ -237,10 +246,9 @@ test('comment suggestions carry the same optional contract term only for alterna
   h.action('OFFER_ALTERNATIVE')
   assert.deepEqual(await h.generate(), { action: 'OFFER_ALTERNATIVE' })
   h.change('contractTermMonths', '6')
-  h.change('termDays', '90')
   h.change('amount', '300000')
   h.change('finalRate', '19,5')
-  assert.deepEqual(await h.generate(), { action: 'OFFER_ALTERNATIVE', amount: 300000, termDays: 90, contractTermMonths: 6, finalRate: 19.5 })
+  assert.deepEqual(await h.generate(), { action: 'OFFER_ALTERNATIVE', amount: 300000, contractTermMonths: 6, finalRate: 19.5 })
   h.field('contractTermMonths').props.onClear()
   h.render()
   assert.ok(!Object.hasOwn(await h.generate(), 'contractTermMonths'))
@@ -249,6 +257,7 @@ test('comment suggestions carry the same optional contract term only for alterna
   assert.deepEqual(await h.generate(), { action: 'APPROVE', finalRate: 19.5 })
   h.action('DECLINE')
   assert.deepEqual(await h.generate(), { action: 'DECLINE' })
+  assert.ok(h.requests.every((request) => !Object.hasOwn(request.body, 'termDays')))
   assert.ok(h.requests.every((request) => request.url === '/api/bank/applications/7/comment-suggestion'))
 })
 
@@ -267,10 +276,10 @@ test('bank submission rejects and focuses invalid contract terms, then sends a v
   h.submit()
   assert.equal(h.decisions.length, 1)
   assert.equal(h.decisions[0].contractTermMonths, 12)
-  assert.equal(h.decisions[0].termDays, undefined)
+  assert.ok(!Object.hasOwn(h.decisions[0], 'termDays'))
 })
 
-test('bank queue shows contract limit, requested duration, indicative tranche and signed status separately', () => {
+test('bank queue shows contract limit, requested duration, fixed tranche term and signed status separately', () => {
   const dependencies = {
     react: { ...React, useId: () => 'queue', useState: (value) => [value, () => {}], useMemo: (callback) => callback() },
     '@alfalab/core-components/button': { Button }, '@alfalab/core-components/icon-button': { IconButton: Button },
@@ -289,14 +298,15 @@ test('bank queue shows contract limit, requested duration, indicative tranche an
   }))
   assert.ok(html.includes('Лимит / сроки'))
   assert.ok(html.includes('Договор: 24 мес.'))
-  assert.ok(html.includes('Ориентировочный транш: 60 дней'))
+  assert.ok(html.includes('Срок транша: 60 дней'))
   assert.ok(html.includes('Договор подписан'))
   assert.ok(!html.includes('Сумма / срок'))
+  assert.doesNotMatch(html, /ориентировоч/i)
 })
 
-test('bank details retain requested term, actual offered duration and nullable contract dates', () => {
+test('bank details retain the first-step tranche term, approved rate and nullable contract dates', () => {
   const view = { ...bankView, status: 'ACCEPTED', decision: 'APPROVED',
-    offer: { id: 9, amount: 400000, termDays: 90, contractTermMonths: 6, finalRate: 19.5,
+    offer: { id: 9, amount: 400000, termDays: bankView.termDays, contractTermMonths: 6, finalRate: 19.5,
       monthlyPayment: 140000, validUntil: '2026-11-08', status: 'ACCEPTED',
       contractStart: '2026-10-25', contractEnd: '2027-04-25' } }
   const queryValue = { isPending: false, isError: false, isFetching: false, dataUpdatedAt: 0 }
@@ -321,12 +331,17 @@ test('bank details retain requested term, actual offered duration and nullable c
   const { BankWorkspace } = loadFrontend('widgets/bank-workspace/ui/BankWorkspace/BankWorkspace.tsx', dependencies)
   const html = renderToStaticMarkup(React.createElement(BankWorkspace))
   assert.ok(html.includes('<dt>Запрошенный срок договора</dt><dd>24 мес.</dd>'))
-  assert.ok(html.includes('<dt>Ориентировочный срок транша</dt><dd>60 дней</dd>'))
+  assert.ok(html.includes('<dt>Срок транша в заявке</dt><dd>60 дней</dd>'))
+  assert.ok(html.includes('<dt>Срок транша</dt><dd>60 дней</dd>'))
+  assert.ok(html.includes('<dt>Ставка по договору, % годовых</dt><dd>19.5%</dd>'))
   assert.ok(html.includes('<dt>Срок договора</dt><dd>6 мес.</dd>'))
   assert.ok(html.includes('<dt>Начало договора</dt><dd>2026-10-25</dd>'))
   assert.ok(html.includes('<dt>Окончание договора</dt><dd>2027-04-25</dd>'))
   assert.ok(html.includes('весь лимит одним траншем'))
   assert.ok(html.includes('не означает выдачу денег'))
+  assert.ok(html.includes('не выбираются при получении траншей'))
+  assert.ok(html.includes('не график погашения'))
+  assert.doesNotMatch(html, /ориентировоч|Срок и ставка каждого транша определяются отдельно/i)
   Object.assign(view.offer, { contractTermMonths: null, contractStart: null, contractEnd: null })
   const legacy = renderToStaticMarkup(React.createElement(BankWorkspace))
   assert.ok(legacy.includes('<dt>Срок договора</dt><dd>Не указан</dd>'))

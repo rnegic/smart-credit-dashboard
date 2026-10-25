@@ -209,7 +209,7 @@ class AssistantControllerTest {
 
     private DashboardResponse emptyDashboard() {
         return new DashboardResponse(new DashboardResponse.CompanyDto(42L, "Private name", "7701234567",
-                "62.01", "IP", null), null, List.of(), List.of(), List.of(), null, null, 0);
+                "62.01", "IP", null), null, List.of(), List.of(), List.of(), null, null, null, 0);
     }
 
     private String envelope(String content) {

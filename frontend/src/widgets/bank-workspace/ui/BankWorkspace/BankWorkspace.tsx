@@ -619,11 +619,11 @@ export function BankWorkspace() {
                     <dd>{application.contractTermMonths} мес.</dd>
                   </div>
                   <div>
-                    <dt>Ориентировочный срок транша</dt>
+                    <dt>Срок транша в заявке</dt>
                     <dd>{application.termDays} дней</dd>
                   </div>
                   <div>
-                    <dt>Базовая годовая ставка для ориентировочного транша</dt>
+                    <dt>Базовая годовая ставка для скоринга</dt>
                     <dd>
                       {application.rate == null
                         ? 'Не указана'
@@ -631,7 +631,7 @@ export function BankWorkspace() {
                     </dd>
                   </div>
                   <div>
-                    <dt>Сохранённая годовая ставка для ориентировочного транша</dt>
+                    <dt>Ставка по договору, % годовых</dt>
                     <dd>
                       {finalRate == null ? 'Не определена' : `${finalRate}%`}
                     </dd>
@@ -688,7 +688,7 @@ export function BankWorkspace() {
                         </dd>
                       </div>
                       <div>
-                        <dt>Рекомендуемая годовая ставка для транша</dt>
+                        <dt>Рекомендуемая ставка по договору, % годовых</dt>
                         <dd>
                           {recommendation.finalRate === null
                             ? 'Не указана'
@@ -804,7 +804,7 @@ export function BankWorkspace() {
                   ставке. Платёж показан только как пример, если взять весь
                   лимит одним траншем на {application.termDays} дней.
                   Пример платежа предложения рассчитывается отдельно по
-                  ставке для ориентировочного транша.
+                  ставке по договору. Это не график погашения.
                 </p>
               </section>
 
@@ -958,11 +958,11 @@ export function BankWorkspace() {
                         : `${application.offer.contractTermMonths} мес.`}</dd>
                     </div>
                     <div>
-                      <dt>Ориентировочный срок транша</dt>
+                      <dt>Срок транша</dt>
                       <dd>{application.offer.termDays} дней</dd>
                     </div>
                     <div>
-                      <dt>Годовая ставка для ориентировочного транша</dt>
+                      <dt>Ставка по договору, % годовых</dt>
                       <dd>{application.offer.finalRate}%</dd>
                     </div>
                     <div>
@@ -988,8 +988,10 @@ export function BankWorkspace() {
                   </dl>
                   <p className={styles.secondary}>
                     Пример платежа рассчитан, если взять весь лимит одним
-                    траншем на {application.offer.termDays} дней. Срок и ставка
-                    каждого транша определяются отдельно.
+                    траншем на {application.offer.termDays} дней. Это не график
+                    погашения. Срок транша выбран на первом шаге заявки;
+                    после одобрения срок и ставка фиксируются в индивидуальных
+                    условиях договора и не выбираются при получении траншей.
                     {application.status === 'ACCEPTED' && ' Договор подписан; это не означает выдачу денег. Транши оформляются отдельно.'}
                   </p>
                 </section>

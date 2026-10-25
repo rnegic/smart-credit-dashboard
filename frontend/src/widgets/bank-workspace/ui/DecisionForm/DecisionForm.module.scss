@@ -125,8 +125,7 @@
 }
 
 .note,
-.error,
-.warning {
+.error {
   margin: var(--gap-0);
   font-size: calc(var(--gap-12) + var(--gap-2));
   line-height: var(--gap-20);
@@ -139,13 +138,6 @@
 
 .error {
   color: var(--color-light-status-negative);
-}
-
-.warning {
-  padding: var(--gap-12);
-  border-inline-start: var(--gap-2) solid var(--color-light-status-attention);
-  color: var(--color-light-text-primary);
-  background: var(--color-light-status-muted-attention);
 }
 
 .product dl,

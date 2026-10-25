@@ -117,8 +117,8 @@ export function SignDocuments({
               <div><dt>Срок договора</dt><dd>{matchingOffer.contractTermMonths === null
                 ? 'Не указан'
                 : `${matchingOffer.contractTermMonths} мес.`}</dd></div>
-              <div><dt>Ориентировочный срок транша</dt><dd>{matchingOffer.termDays} дней</dd></div>
-              <div><dt>Ставка для ориентировочного транша</dt><dd>{String(matchingOffer.finalRate).replace('.', ',')}% годовых</dd></div>
+              <div><dt>Срок транша</dt><dd>{matchingOffer.termDays} дней</dd></div>
+              <div><dt>Ставка по договору</dt><dd>{String(matchingOffer.finalRate).replace('.', ',')}% годовых</dd></div>
               <div><dt>Пример ежемесячного платежа</dt><dd>{formatMoney(matchingOffer.monthlyPayment, { exact: true })}</dd></div>
               {matchingOffer.contractStart !== null && (
                 <div><dt>Начало договора</dt><dd>{formatDate(matchingOffer.contractStart)}</dd></div>
@@ -129,7 +129,10 @@ export function SignDocuments({
             </dl>
             <p className={styles.termsNote}>
               Пример платежа рассчитан, если взять весь лимит одним траншем на {matchingOffer.termDays} дней.
-              Срок и ставка каждого транша определяются отдельно. Подписание договора не означает выдачу денег.
+              Это не график погашения. Здесь показаны точные условия одобренного предложения:
+              срок транша выбран на первом шаге заявки и зафиксирован вместе со ставкой
+              в индивидуальных условиях договора. При получении траншей они не выбираются заново.
+              Подписание договора не означает выдачу денег.
             </p>
           </>
         )}

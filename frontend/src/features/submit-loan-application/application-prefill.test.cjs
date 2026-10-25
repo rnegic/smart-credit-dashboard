@@ -788,7 +788,8 @@ test('partial data preserves the source description, missing annotations and aut
     assert.equal(h.field('description').props.value, description)
     assert.equal(h.field('amount').props.error, 'Заполните поле')
     assert.match(h.field('termDays').props.hint, /Заполнено автоматически, проверьте/)
-    assert.match(h.field('termDays').props.hint, /Фактический срок выбирается при получении каждого транша, а ставку определяет сервер/)
+    assert.match(h.field('termDays').props.hint, /Срок выбирается здесь: 30, 60 или 90 дней/)
+    assert.match(h.field('termDays').props.hint, /После одобрения банка он фиксируется в индивидуальных условиях договора/)
     assert.ok(h.html().includes(partialMessage))
     assert.ok(!h.html().includes('Заполнено ИИ, проверьте'))
     h.next()
@@ -848,6 +849,12 @@ test('submission accepts only 6, 12 or 24 contract months, independently of tran
     assert.ok(result.error.issues.some((issue) => issue.path[0] === 'contractTermMonths'))
     assert.match(result.error.issues[0].message, /Выберите срок договора 6, 12 или 24 месяца/)
   }
+  for (const termDays of [undefined, null, '', '60', 0, -30, 15, 45, 120, 60.5, NaN]) {
+    const result = schema.safeParse({ ...financing, termDays })
+    assert.equal(result.success, false, String(termDays))
+    assert.ok(result.error.issues.some((issue) => issue.path[0] === 'termDays'))
+    assert.match(result.error.issues[0].message, /Выберите срок транша 30, 60 или 90 дней/)
+  }
 })
 
 test('IP and OOO start with empty terms, require a contract term and save every allowed selection', async (t) => {
@@ -868,9 +875,10 @@ test('IP and OOO start with empty terms, require a contract term and save every 
         { key: '24', content: '24 месяцев' },
       ])
       assert.equal(h.field('termDays').props.selected, null)
-      assert.equal(h.field('termDays').props.label, 'Ориентировочный срок транша')
+      assert.equal(h.field('termDays').props.label, 'Срок транша')
       assert.equal(h.field('termDays').props.fieldProps['aria-required'], true)
-      assert.match(h.field('termDays').props.hint, /при получении каждого транша/)
+      assert.deepEqual(Array.from(h.field('termDays').props.options, (option) => option.key), ['30', '60', '90'])
+      assert.match(h.field('termDays').props.hint, /не меняется при получении траншей/)
       assert.equal(h.field('amount').props.value, '')
       assert.equal(h.field('amount').props.label, 'Лимит договора, ₽')
       assert.match(h.field('amount').props.hint, /Общая сумма всех траншей за весь срок договора/)
@@ -983,7 +991,7 @@ test('historical local and server drafts without contract months reopen financin
   }
 })
 
-test('IP and OOO review distinguish the cumulative limit and both terms and submit the selected contract', async (t) => {
+test('IP and OOO review show a read-only tranche term and only edit it by returning to financing', async (t) => {
   for (const legalForm of ['IP', 'OOO']) {
     const form = response().form
     form.step2_businessData.externalData = null
@@ -1014,19 +1022,38 @@ test('IP and OOO review distinguish the cumulative limit and both terms and subm
     assert.equal(h.field('reviewAmount').props['aria-label'], 'Лимит договора, ₽')
     assert.equal(h.field('reviewContractTermMonths').props.label, 'Срок договора')
     assert.equal(h.field('reviewContractTermMonths').props.fieldProps['aria-required'], true)
-    assert.equal(h.field('reviewTermDays').props.label, 'Ориентировочный срок транша')
-    assert.equal(h.field('reviewTermDays').props.fieldProps['aria-required'], true)
-    assert.match(h.field('reviewTermDays').props.hint, /Фактический срок выбирается при получении каждого транша, а ставку определяет сервер/)
+    assert.equal(h.field('reviewTermDays'), undefined)
+    assert.equal(h.field('termDays'), undefined)
+    const termSummary = h.find((item) => item.type === Text && item.props.children === '60 дней')
+    assert.ok(termSummary)
+    assert.equal(termSummary.props.onChange, undefined)
+    assert.ok(h.html().includes('Выбран на первом шаге. Для изменения вернитесь к шагу'))
+    assert.ok(h.html().includes('ставку по договору и выбранный срок транша'))
+    assert.doesNotMatch(h.html(), /ориентировоч|Фактический срок.*выбирается/i)
     const limitLabel = h.find((item) => item.props.text === 'Лимит договора, ₽')
     assert.match(limitLabel.props.hint, /Погашение траншей не восстанавливает лимит/)
     h.change('reviewContractTermMonths', '24')
-    h.change('reviewTermDays', '90')
     h.change('reviewAmount', '300000')
+    for (let step = 3; step > 0; step--) {
+      h.find((item) => item.type === Button && item.props.children === 'Назад').props.onClick()
+      h.render()
+      assert.equal(h.field('reviewTermDays'), undefined)
+    }
+    assert.equal(h.field('termDays').props.selected, '60')
+    h.change('termDays', '90')
+    for (let step = 0; step < 3; step++) {
+      h.next()
+      const saved = await h.resolveDraft()
+      assert.equal(saved.form.step1_financingParameters.termDays, 90)
+    }
+    assert.equal(h.field('termDays'), undefined)
+    assert.equal(h.field('reviewTermDays'), undefined)
+    assert.ok(h.find((item) => item.type === Text && item.props.children === '90 дней'))
     h.next()
     await settle()
-    assert.equal(h.requests.length, 1, legalForm)
-    assert.equal(h.requests[0].url, '/api/applications')
-    const submitted = JSON.parse(h.requests[0].options.body)
+    assert.equal(h.requests.length, 4, legalForm)
+    assert.equal(h.requests.at(-1).url, '/api/applications')
+    const submitted = JSON.parse(h.requests.at(-1).options.body)
     assert.equal(submitted.step1_financingParameters.contractTermMonths, 24)
     assert.equal(submitted.step1_financingParameters.termDays, 90)
     assert.equal(submitted.step1_financingParameters.amount, 300000)
@@ -1044,7 +1071,7 @@ test('preparation is a decorative, token-styled composition with reserved space 
   assert.equal(elements(graphic).filter((item) => item.props.className === 'traveller').length, 4)
   const html = renderToStaticMarkup(view)
   assert.ok(html.includes('<h2>Готовим вашу заявку</h2>'))
-  for (const label of ['Лимит договора', 'Срок договора', 'Ориентировочный срок транша', 'Цель']) assert.ok(html.includes(label))
+  for (const label of ['Лимит договора', 'Срок договора', 'Срок транша', 'Цель']) assert.ok(html.includes(label))
   assert.ok(!html.includes('style='))
   const text = html.replace(/<[^>]+>/g, '')
   assert.ok(text.includes('Обработка в среднем занимает 10 секунд.'))
@@ -1077,8 +1104,10 @@ test('the initial screen has no illustration and keeps the actual term restricti
   assert.equal(h.buttons[0].props.children, 'Подготовить заявку')
   assert.ok(h.find((item) => item.type === 'header' && item.props.className === 'intentHeader'))
   assert.ok(h.html().includes('Срок договора: 6, 12 или 24 месяца.'))
-  assert.ok(h.html().includes('Ориентировочный срок транша: 30, 60 или 90 дней.'))
-  assert.ok(h.html().includes('Укажите оба срока в описании.'))
+  assert.ok(h.html().includes('Срок транша: 30, 60 или 90 дней.'))
+  assert.ok(h.html().includes('Укажите оба срока в описании и проверьте их на первом шаге анкеты.'))
+  assert.ok(h.html().includes('После одобрения банка срок транша фиксируется в индивидуальных условиях договора.'))
+  assert.doesNotMatch(h.html(), /ориентировоч/i)
   assert.equal(h.field('description').props['aria-label'], 'Ваша бизнес-задача')
   assert.match(h.field('description').props['aria-describedby'], /intent-help .*intent-terms/)
   const inactive = ApplicationPreparation({ visible: false, slow: false, headingTag: 'h2' })

@@ -428,11 +428,11 @@ export function AcceptOffer({
                     : `${displayOffer.contractTermMonths} мес.`}</dd>
                 </div>
                 <div>
-                  <dt>Ориентировочный срок транша</dt>
+                  <dt>Срок транша</dt>
                   <dd>{displayOffer.termDays} дней</dd>
                 </div>
                 <div>
-                  <dt>Ставка для ориентировочного транша</dt>
+                  <dt>Ставка по договору</dt>
                   <dd>
                     {String(displayOffer.finalRate).replace('.', ',')}%{' '}
                     <span>годовых</span>
@@ -458,6 +458,13 @@ export function AcceptOffer({
                   </div>
                 )}
               </dl>
+              <p className={styles.actionHint}>
+                Это точные условия одобренного предложения. Срок транша выбран
+                на первом шаге заявки и фиксируется вместе со ставкой
+                в индивидуальных условиях договора. При получении траншей
+                они не выбираются заново. Пример платежа не является графиком
+                погашения.
+              </p>
               {officerComment?.trim() && (
                 <section
                   className={styles.comment}
@@ -476,8 +483,7 @@ export function AcceptOffer({
                 >
                   <h3 id={`${id}-comparison`}>Относительно вашей заявки</h3>
                   {displayOffer.amount !== application.amount ||
-                   displayOffer.contractTermMonths !== application.contractTermMonths ||
-                  displayOffer.termDays !== application.termDays ? (
+                   displayOffer.contractTermMonths !== application.contractTermMonths ? (
                     <dl>
                       {displayOffer.amount !== application.amount && (
                         <div>
@@ -501,18 +507,12 @@ export function AcceptOffer({
                             : `${displayOffer.contractTermMonths} мес.`}</dd>
                         </div>
                       )}
-                      {displayOffer.termDays !== application.termDays && (
-                        <div>
-                          <dt>Ориентировочный срок транша в заявке: {application.termDays} дней</dt>
-                          <dd>Ориентировочный срок транша предложения: {displayOffer.termDays} дней</dd>
-                        </div>
-                      )}
                     </dl>
                   ) : (
                     <p>
                       {application.decision === 'ALTERNATIVE_OFFER'
-                        ? 'Банк предложил другие условия. Лимит и сроки сохранены; проверьте ставку для ориентировочного транша'
-                        : 'Лимит, срок договора и ориентировочный срок транша соответствуют заявке'}
+                        ? 'Банк предложил другие условия. Лимит и срок договора сохранены; проверьте ставку по договору'
+                        : 'Лимит и срок договора соответствуют заявке. Срок транша сохранён с первого шага'}
                     </p>
                   )}
                 </section>

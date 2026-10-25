@@ -21,6 +21,9 @@
   grid-area: 1 / 1;
   min-inline-size: 0;
 }
+.startContent > [data-visible='false'] {
+  display: none;
+}
 .intent {
   display: flex;
   flex-direction: column;

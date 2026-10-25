@@ -17,7 +17,7 @@ export const trancheSchema = z.object({
   repaidAt: z.iso.date().nullable(),
 })
 
-/** Signed contracts expose authoritative limits, availability and daily rates. */
+/** Signed contracts expose authoritative limits and agreed fixed tranche terms. */
 export const contractSchema = z.object({
   id: z.number().int().positive(),
   applicationId: z.number().int().positive(),
@@ -37,13 +37,14 @@ export const contractSchema = z.object({
     'HAS_OVERDUE_TRANCHE',
     'LIMIT_EXHAUSTED',
     'CONTRACT_ENDING',
+    'RATE_UNAVAILABLE',
   ]).nullable(),
-  trancheTerms: z.array(z.object({
+  trancheTerms: z.object({
     termDays: z.union([z.literal(30), z.literal(60), z.literal(90)]),
     ratePercent: z.number().nonnegative().nullable(),
     dueDate: z.iso.date(),
     available: z.boolean(),
-  })),
+  }),
   tranches: z.array(trancheSchema),
 })
 
@@ -51,9 +52,6 @@ export const contractSchema = z.object({
 export const trancheRequestSchema = z.object({
   amount: z.number({ error: 'Укажите сумму транша' }).positive('Укажите сумму транша')
     .multipleOf(0.01, 'Укажите сумму с точностью до копеек'),
-  termDays: z.union([z.literal(30), z.literal(60), z.literal(90)], {
-    error: 'Выберите срок транша',
-  }),
 })
 
 export type Contract = z.infer<typeof contractSchema>
@@ -70,7 +68,8 @@ export const contractIssueBlockedLabels = {
   CONTRACT_EXPIRED: 'Срок договора истёк. Новые транши недоступны.',
   HAS_OVERDUE_TRANCHE: 'Погасите просроченные транши, чтобы получить новый.',
   LIMIT_EXHAUSTED: 'Доступный лимит меньше минимальной суммы транша.',
-  CONTRACT_ENDING: 'До окончания договора не помещается даже транш на 30 дней.',
+  CONTRACT_ENDING: 'Согласованный срок транша не помещается в оставшийся срок договора. Новые транши недоступны.',
+  RATE_UNAVAILABLE: 'Согласованная ставка по договору недоступна. Получение новых траншей невозможно.',
 } satisfies Record<NonNullable<Contract['issueBlockedReason']>, string>
 
 /** Keep contracts isolated by the authenticated user, like the other entities. */

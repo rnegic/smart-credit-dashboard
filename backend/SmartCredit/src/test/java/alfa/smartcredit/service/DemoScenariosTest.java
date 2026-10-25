@@ -67,7 +67,7 @@ class DemoScenariosTest {
 
     @Test void oooDeclinedByCompanyAge() {
         var o = byLogin("demo_ooo_declined");
-        assertEquals(100, o.r().internalScore());
+        assertEquals(90, o.r().internalScore());
         assertTrue(o.d().reason().contains("1 года"));
     }
 

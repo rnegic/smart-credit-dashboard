@@ -38,9 +38,7 @@ const contract = {
   usedLimit: 100000, availableLimit: 400000, revolving: false,
   outstandingPrincipal: 100000, minTrancheAmount: 1000, canIssueTranche: true,
   issueBlockedReason: null,
-  trancheTerms: [30, 60, 90].map((termDays, index) => ({
-    termDays, ratePercent: 24.5 + index / 4, dueDate: ['2026-11-24', '2026-12-24', '2027-01-23'][index], available: true,
-  })),
+  trancheTerms: { termDays: 90, ratePercent: 25, dueDate: '2027-01-23', available: true },
   tranches: [tranche],
 }
 const entity = load('entities/contract/index.ts', { zod: { z }, '@tanstack/react-query': {}, '@/shared/api': {} })
@@ -49,31 +47,48 @@ const format = {
   ...load('shared/lib/format-date.ts', {}),
 }
 const errorModel = load('features/manage-tranches/model/use-tranche-mutation.ts', {
-  '@tanstack/react-query': {}, '@/entities/session': {}, '@/entities/contract': {}, '@/shared/api': { ApiError },
+  '@tanstack/react-query': {}, '@/entities/session': {}, '@/entities/contract': entity, '@/shared/api': { ApiError },
 })
 
-test('contract and tranche responses preserve explicit nullable fields, daily terms and historical repayment totals', () => {
+test('contract responses require one fixed terms object and preserve historical tranche terms and repayment totals', () => {
   const repaid = { ...tranche, status: 'REPAID', repaidAt: '2026-10-25' }
   const parsed = entity.contractSchema.parse({ ...contract, tranches: [repaid],
-    trancheTerms: [{ ...contract.trancheTerms[0], ratePercent: null, available: false }] })
+    canIssueTranche: false, issueBlockedReason: 'RATE_UNAVAILABLE',
+    trancheTerms: { ...contract.trancheTerms, ratePercent: null } })
   assert.equal(parsed.tranches[0].totalToRepay, tranche.totalToRepay)
-  assert.equal(parsed.trancheTerms[0].ratePercent, null)
+  assert.equal(parsed.tranches[0].termDays, 30)
+  assert.equal(parsed.tranches[0].ratePercent, 24.5)
+  assert.equal(parsed.trancheTerms.termDays, 90)
+  assert.equal(parsed.trancheTerms.ratePercent, null)
+  assert.equal(parsed.issueBlockedReason, 'RATE_UNAVAILABLE')
   for (const key of Object.keys(contract)) {
     const missing = { ...contract }; delete missing[key]
     assert.equal(entity.contractSchema.safeParse(missing).success, false, key)
   }
   for (const term of [0, 3, 18, 36, null])
     assert.equal(entity.contractSchema.safeParse({ ...contract, contractTermMonths: term }).success, false)
+  for (const key of Object.keys(contract.trancheTerms)) {
+    const missing = { ...contract.trancheTerms }; delete missing[key]
+    assert.equal(entity.contractSchema.safeParse({ ...contract, trancheTerms: missing }).success, false, key)
+  }
+  for (const termDays of [30, 60, 90])
+    assert.equal(entity.contractSchema.safeParse({ ...contract, trancheTerms: { ...contract.trancheTerms, termDays } }).success, true)
+  for (const termDays of [null, 6, 12, 24, 31, '30'])
+    assert.equal(entity.contractSchema.safeParse({ ...contract, trancheTerms: { ...contract.trancheTerms, termDays } }).success, false)
+  for (const trancheTerms of [[], [contract.trancheTerms], null])
+    assert.equal(entity.contractSchema.safeParse({ ...contract, trancheTerms }).success, false)
+  assert.equal(entity.contractSchema.safeParse({ ...contract, issueBlockedReason: 'UNKNOWN' }).success, false)
+  assert.equal(entity.contractSchema.safeParse({ ...contract, trancheTerms: { ...contract.trancheTerms, dueDate: '2026-02-30' } }).success, false)
   assert.equal(entity.trancheSchema.safeParse({ ...tranche, repaidAt: undefined }).success, false)
 })
 
-test('tranche requests accept any kopeck amount and only 30/60/90 days', () => {
-  for (const termDays of [30, 60, 90])
-    assert.deepEqual(plain(entity.trancheRequestSchema.parse({ amount: 123456.78, termDays })), { amount: 123456.78, termDays })
+test('tranche requests accept kopeck amounts without a duration and strip non-request snapshot fields', () => {
+  assert.deepEqual(plain(entity.trancheRequestSchema.parse({ amount: 123456.78 })), { amount: 123456.78 })
+  assert.deepEqual(plain(entity.trancheRequestSchema.parse({ amount: 123456.78, termDays: 30,
+    expectedTermDays: 90, expectedRate: 25, expectedDueDate: '2027-01-23' })), { amount: 123456.78 })
   for (const amount of [null, 0, -1, 1000.001, '1000', Infinity])
-    assert.equal(entity.trancheRequestSchema.safeParse({ amount, termDays: 30 }).success, false)
-  for (const termDays of [null, 6, 12, 24, 31, '30'])
-    assert.equal(entity.trancheRequestSchema.safeParse({ amount: 1000, termDays }).success, false)
+    assert.equal(entity.trancheRequestSchema.safeParse({ amount }).success, false)
+  assert.equal(entity.trancheRequestSchema.safeParse({}).success, false)
 })
 
 test('dashboard accepts both tranche action codes and nullable legacy contract months', () => {
@@ -94,9 +109,16 @@ test('dashboard accepts both tranche action codes and nullable legacy contract m
   }
   const parsed = dashboardSchema.parse(dashboard)
   assert.equal(parsed.activeContract.availableLimit, 400000)
+  assert.deepEqual(plain(parsed.activeContract.trancheTerms), contract.trancheTerms)
   assert.equal(parsed.currentApplication.contractTermMonths, null)
   assert.deepEqual(plain(parsed.requiredActions), dashboard.requiredActions)
   assert.equal(dashboardSchema.safeParse({ ...dashboard, activeContract: undefined }).success, false)
+  assert.equal(dashboardSchema.safeParse({ ...dashboard, activeContract: { ...contract, trancheTerms: undefined } }).success, false)
+  assert.equal(dashboardSchema.safeParse({ ...dashboard, activeContract: { ...contract, trancheTerms: [contract.trancheTerms] } }).success, false)
+  const blocked = dashboardSchema.parse({ ...dashboard, activeContract: { ...contract, canIssueTranche: false,
+    issueBlockedReason: 'RATE_UNAVAILABLE', trancheTerms: { ...contract.trancheTerms, ratePercent: null } } })
+  assert.equal(blocked.activeContract.issueBlockedReason, 'RATE_UNAVAILABLE')
+  assert.equal(blocked.activeContract.trancheTerms.ratePercent, null)
 })
 
 test('contract queries are scoped and financial endpoints send the exact backend bodies', async () => {
@@ -118,10 +140,11 @@ test('contract queries are scoped and financial endpoints send the exact backend
   scope = null
   assert.equal(api.useContract(9).enabled, false)
   assert.equal(api.useContracts().enabled, false)
-  await api.issueTranche(9, { amount: 123456.78, termDays: 60 })
+  await api.issueTranche(9, { amount: 123456.78, expectedTermDays: 90, expectedRate: 25, expectedDueDate: '2027-01-23' })
   await api.repayTranche(11)
   assert.equal(requests[0].url, '/api/contracts/9/tranches')
-  assert.deepEqual(JSON.parse(requests[0].options.body), { amount: 123456.78, termDays: 60 })
+  assert.equal(requests[0].options.method, 'POST')
+  assert.deepEqual(JSON.parse(requests[0].options.body), { amount: 123456.78 })
   assert.deepEqual(plain(requests[1]), { url: '/api/tranches/11/repay', options: { method: 'POST' } })
 })
 
@@ -132,14 +155,13 @@ test('financial responses must refer to the selected contract or confirm the sel
         : url.endsWith('/tranches') ? { ...tranche, contractId: 99 } : { ...contract, id: 99 }),
     },
   })
-  for (const operation of [() => api.getContract(9), () => api.issueTranche(9, { amount: 1000, termDays: 30 }),
+  for (const operation of [() => api.getContract(9), () => api.issueTranche(9, { amount: 1000 }),
     () => api.repayTranche(11)])
     await assert.rejects(operation, (error) => error.code === 'INVALID_RESPONSE')
 })
 
 const Button = ({ children, disabled }) => React.createElement('button', { disabled }, children)
 const AmountInput = ({ label, value, error }) => React.createElement('label', null, label, String(value), error)
-const Select = ({ label, error }) => React.createElement('label', null, label, error)
 const Typography = { Text: ({ tag = 'span', children, role }) => React.createElement(tag, { role }, children),
   TitleResponsive: ({ tag, children }) => React.createElement(tag, null, children) }
 const Panel = ({ open, children }) => open ? React.createElement('aside', null, children) : null
@@ -155,7 +177,9 @@ function harness(t, kind = 'IssueTranche', overrides = {}) {
   const requests = []
   const pending = new Set()
   const state = { user: 1, generation: 0, fresh: plain(contract), latest: plain(contract), invalidations: [],
-    response: { ...tranche, id: 12, amount: 123456.78 }, error: null, refetchError: null, ...overrides }
+    response: { ...tranche, id: 12, amount: 123456.78, termDays: contract.trancheTerms.termDays,
+      ratePercent: contract.trancheTerms.ratePercent, dueDate: contract.trancheTerms.dueDate },
+    error: null, refetchError: null, ...overrides }
   const useState = (initial) => {
     const index = cursor++
     if (!slots[index]) slots[index] = { value: typeof initial === 'function' ? initial() : initial }
@@ -187,11 +211,11 @@ function harness(t, kind = 'IssueTranche', overrides = {}) {
     }
   } }
   const model = load('features/manage-tranches/model/use-tranche-mutation.ts', {
-    '@tanstack/react-query': queries, '@/entities/contract': {},
+    '@tanstack/react-query': queries, '@/entities/contract': entity,
     '@/entities/session': { isCurrentSession: (_, scope, generation) => scope === state.user && generation === state.generation },
     '@/shared/api': { ApiError, useApiScope: () => state.user, useSessionTransition: () => ({ generation: state.generation }) },
   })
-  const query = () => ({ data: state.latest, isError: false, isFetching: false, error: null,
+  const query = () => ({ data: state.latest, isError: Boolean(state.queryError), isFetching: Boolean(state.fetching), error: state.queryError ?? null,
     refetch: async () => state.refetchError
       ? { isError: true, error: state.refetchError }
       : (state.latest = plain(state.fresh), { isError: false, data: state.latest }),
@@ -203,9 +227,10 @@ function harness(t, kind = 'IssueTranche', overrides = {}) {
   }
   const exports = load(`features/manage-tranches/ui/${kind}/${kind}.tsx`, {
     react, '@alfalab/core-components/button': { Button }, '@alfalab/core-components/typography': { Typography },
-    '@alfalab/core-components/amount-input': { AmountInput }, '@alfalab/core-components/select': { Select },
+    '@alfalab/core-components/amount-input': { AmountInput },
     '@/entities/contract': { ...entity, useContract: query, getContract: async (id) => {
       requests.push({ url: `/api/contracts/${id}` })
+      if (state.preflightError) throw state.preflightError
       state.afterPreflight?.()
       return state.fresh
     }, issueTranche: (id, body) => request(`/api/contracts/${id}/tranches`, body), repayTranche: (id) => request(`/api/tranches/${id}/repay`) },
@@ -224,10 +249,8 @@ function harness(t, kind = 'IssueTranche', overrides = {}) {
       assert.ok(button, label); assert.ok(!button.props.disabled, label)
       button.props.onClick(); this.render()
     },
-    fill(amount = 12345678, termDays = 30) {
+    fill(amount = 12345678) {
       this.find((node) => node.type === AmountInput).props.onChange(null, { value: amount })
-      this.render()
-      this.find((node) => node.type === Select).props.onChange({ selected: { key: String(termDays) } })
       this.render()
     },
     submit() { this.form.props.onSubmit({ preventDefault() {} }); this.render() },
@@ -239,19 +262,31 @@ function harness(t, kind = 'IssueTranche', overrides = {}) {
   return h
 }
 
-test('issuance validates minimum/available limit and disables unavailable dates or missing rates locally', async (t) => {
+test('issuance is amount-only, displays agreed server terms and validates minimum/limit and fixed availability locally', async (t) => {
   const h = harness(t)
+  assert.equal(nodes(h.form).filter((node) => node.type === AmountInput).length, 1)
+  assert.equal(h.find((node) => node.type === 'select' || node.props.name === 'termDays' || node.props.role === 'combobox'), undefined)
+  assert.ok(h.html().includes('Срок транша по договору'))
+  assert.ok(h.html().includes('90 дней'))
+  assert.ok(h.html().includes('25% годовых'))
+  assert.ok(h.html().includes(format.formatDate(contract.trancheTerms.dueDate)))
+  assert.ok(!h.html().includes('Выберите срок'))
+  assert.ok(!h.html().includes('ориентировочный срок'))
   h.fill(99999); h.submit()
   assert.ok(h.html().includes('От ')); assert.equal(h.requests.length, 0)
   h.fill(40000001); h.submit()
   assert.ok(h.html().includes('Не больше')); assert.equal(h.requests.length, 0)
-  h.state.latest.trancheTerms[1].available = false
-  h.state.latest.trancheTerms[2].ratePercent = null
+  h.state.latest.trancheTerms.available = false
   h.render()
-  const options = h.find((node) => node.type === Select).props.options
-  assert.equal(options[1].disabled, true)
-  assert.equal(options[2].disabled, true)
-  h.fill(100000, 60); h.submit()
+  assert.equal(h.find((node) => node.type === Button && node.props.type === 'submit').props.disabled, true)
+  assert.ok(h.html().includes(entity.contractIssueBlockedLabels.CONTRACT_ENDING))
+  h.fill(100000); h.submit()
+  assert.equal(h.requests.length, 0)
+  h.state.latest.trancheTerms.available = true
+  h.state.latest.trancheTerms.ratePercent = null
+  h.render(); h.submit()
+  assert.equal(h.find((node) => node.type === Button && node.props.type === 'submit').props.disabled, true)
+  assert.ok(h.html().includes(entity.contractIssueBlockedLabels.RATE_UNAVAILABLE))
   assert.equal(h.requests.length, 0)
 })
 
@@ -262,25 +297,69 @@ test('two synchronous submits issue one tranche, preflight terms and send rubles
   submit({ preventDefault() {} }); submit({ preventDefault() {} })
   await h.settle()
   assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' },
-    { url: '/api/contracts/9/tranches', body: { amount: 123456.78, termDays: 30 } }])
+    { url: '/api/contracts/9/tranches', body: { amount: 123456.78 } }])
   assert.ok(h.html().includes('Транш получен'))
+  assert.ok(h.html().includes('90 дней'))
   assert.deepEqual(h.state.invalidations, [{ queryKey: ['client', 1] }])
 })
 
-test('a changed rate or repayment date requires a new review instead of POST', async (t) => {
-  for (const field of ['ratePercent', 'dueDate']) {
+test('a changed fixed duration, agreed rate or server repayment date requires a new snapshot review instead of POST', async (t) => {
+  for (const field of ['termDays', 'ratePercent', 'dueDate']) {
     const h = harness(t)
     h.fill()
-    h.state.fresh.trancheTerms[0][field] = field === 'ratePercent' ? 26 : '2026-11-25'
+    h.state.fresh.trancheTerms[field] = field === 'termDays' ? 60 : field === 'ratePercent' ? 26 : '2027-01-24'
     h.submit(); await h.settle()
     assert.equal(h.requests.length, 1)
     assert.ok(h.html().includes('Условия транша обновились'))
+    h.submit(); await h.settle()
+    assert.deepEqual(plain(h.requests.slice(1)), [{ url: '/api/contracts/9' },
+      { url: '/api/contracts/9/tranches', body: { amount: 123456.78 } }])
   }
+})
+
+test('fresh preflight blocks fixed terms at maturity or without the agreed rate, plus expiry, overdue and cumulative limits', async (t) => {
+  const cases = [
+    { issueBlockedReason: 'CONTRACT_ENDING', endDate: '2026-12-01',
+      trancheTerms: { ...contract.trancheTerms, available: false } },
+    { issueBlockedReason: 'RATE_UNAVAILABLE', trancheTerms: { ...contract.trancheTerms, ratePercent: null } },
+    { issueBlockedReason: 'CONTRACT_EXPIRED', status: 'EXPIRED' },
+    { issueBlockedReason: 'HAS_OVERDUE_TRANCHE', tranches: [{ ...tranche, status: 'OVERDUE' }] },
+    { issueBlockedReason: 'LIMIT_EXHAUSTED', availableLimit: 999 },
+  ]
+  for (const fresh of cases) {
+    const h = harness(t, 'IssueTranche', { fresh: { ...plain(contract), ...fresh, canIssueTranche: false } })
+    h.fill(); h.submit(); await h.settle()
+    assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
+    assert.ok(h.html().includes(entity.contractIssueBlockedLabels[fresh.issueBlockedReason]))
+    assert.ok(!h.html().includes('Выберите меньший срок'))
+    assert.ok(!h.html().includes('выберите другой срок'))
+  }
+  for (const trancheTerms of [{ ...contract.trancheTerms, available: false }, { ...contract.trancheTerms, ratePercent: null }]) {
+    const h = harness(t, 'IssueTranche', { fresh: { ...plain(contract), trancheTerms } })
+    h.fill(); h.submit(); await h.settle()
+    assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
+  }
+  for (const fresh of [{ minTrancheAmount: 150000 }, { availableLimit: 100000 }]) {
+    const h = harness(t, 'IssueTranche', { fresh: { ...plain(contract), ...fresh } })
+    h.fill(); h.submit(); await h.settle()
+    assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
+  }
+})
+
+test('stale or failed GET conditions never submit the amount-only POST', async (t) => {
+  for (const overrides of [{ fetching: true }, { queryError: new ApiError(0, 'NETWORK_ERROR') }]) {
+    const h = harness(t, 'IssueTranche', overrides)
+    h.fill(); h.submit(); await h.settle()
+    assert.equal(h.requests.length, 0)
+  }
+  const h = harness(t, 'IssueTranche', { preflightError: new ApiError(0, 'NETWORK_ERROR') })
+  h.fill(); h.submit(); await h.settle()
+  assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
 })
 
 test('all required backend errors are readable and never trigger automatic issuance retry', async (t) => {
   for (const code of ['CONTRACT_NOT_ACTIVE', 'CONTRACT_EXPIRED', 'HAS_OVERDUE_TRANCHE',
-    'TRANCHE_AMOUNT_TOO_SMALL', 'LIMIT_EXCEEDED', 'TRANCHE_EXCEEDS_CONTRACT', 'RATE_UNAVAILABLE']) {
+    'TRANCHE_AMOUNT_TOO_SMALL', 'LIMIT_EXCEEDED', 'LIMIT_EXHAUSTED', 'CONTRACT_ENDING', 'TRANCHE_EXCEEDS_CONTRACT', 'RATE_UNAVAILABLE']) {
     const h = harness(t, 'IssueTranche', { error: new ApiError(422, code) })
     h.fill(); h.submit(); await h.settle()
     assert.ok(h.html().includes(errorModel.getTrancheErrorMessage(h.state.error)))
@@ -321,20 +400,116 @@ test('repayment of an expired/overdue tranche sends no body, preserves server in
   assert.ok(h.html().includes(format.formatMoney(tranche.totalToRepay, { exact: true })))
 })
 
-test('a changed session blocks a queued financial request and stale cache invalidation', async (t) => {
-  const h = harness(t)
-  h.fill(); h.submit()
-  h.state.generation++
-  await h.settle()
-  assert.equal(h.requests.length, 0)
-  assert.equal(h.state.invalidations.length, 0)
+test('a changed session scope or generation blocks a queued financial request and stale cache invalidation', async (t) => {
+  for (const field of ['user', 'generation']) {
+    const h = harness(t)
+    h.fill(); h.submit()
+    h.state[field]++
+    await h.settle()
+    assert.equal(h.requests.length, 0)
+    assert.equal(h.state.invalidations.length, 0)
+  }
 })
 
 test('a session change between preflight and POST never issues a tranche for the new account', async (t) => {
-  const h = harness(t)
-  h.state.afterPreflight = () => { h.state.generation++ }
-  h.fill(); h.submit()
-  await h.settle()
-  assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
-  assert.equal(h.state.invalidations.length, 0)
+  for (const field of ['user', 'generation']) {
+    const h = harness(t)
+    h.state.afterPreflight = () => { h.state[field]++ }
+    h.fill(); h.submit()
+    await h.settle()
+    assert.deepEqual(plain(h.requests), [{ url: '/api/contracts/9' }])
+    assert.equal(h.state.invalidations.length, 0)
+  }
+})
+
+test('contract details and list show fixed terms while historical durations, overdue repayment, cumulative limits and documents remain visible', () => {
+  const view = { ...plain(contract), status: 'EXPIRED', canIssueTranche: false, issueBlockedReason: 'CONTRACT_EXPIRED',
+    trancheTerms: { ...contract.trancheTerms, available: false },
+    tranches: [{ ...tranche, status: 'OVERDUE' },
+      { ...tranche, id: 22, termDays: 60, ratePercent: 24.75, status: 'REPAID', repaidAt: '2026-10-25' }] }
+  let params = { contractId: '9' }
+  const Cell = ({ children }) => React.createElement('div', null, children)
+  const Icon = () => React.createElement('svg')
+  const IconButton = ({ disabled, 'aria-label': label }) => React.createElement('button', { disabled, 'aria-label': label })
+  const PureCell = Object.assign(Cell, {
+    Content: Cell, Main: Cell, Footer: Cell, FooterButton: Button,
+    Text: ({ children, value }) => React.createElement('div', null, children, value),
+    Amount: ({ value, minorUnits }) => React.createElement('span', null, format.formatMoney(value / minorUnits, { exact: true })),
+  })
+  const { ContractOverview } = load('widgets/contract-overview/ui/ContractOverview/ContractOverview.tsx', {
+    react: React, 'react-router-dom': { useNavigate: () => () => {}, useParams: () => params },
+    '@alfalab/core-components/button': { Button }, '@alfalab/core-components/pure-cell': { PureCell },
+    '@alfalab/core-components/icon-button': { IconButton },
+    '@alfalab/core-components/status': { Status: ({ children }) => React.createElement('span', null, children) },
+    '@alfalab/core-components/tooltip/desktop': { TooltipDesktop: Cell },
+    '@alfalab/core-components/typography': { Typography },
+    '@alfalab/icons/glyph/dist/ArrowRightMIcon': { ArrowRightMIcon: Icon },
+    '@alfalab/icons/glyph/dist/ArrowsCwMIcon': { ArrowsCwMIcon: Icon },
+    '@alfalab/icons/glyph/dist/CheckmarkCircleSIcon': { CheckmarkCircleSIcon: Icon },
+    '@alfalab/icons/glyph/dist/ClockSIcon': { ClockSIcon: Icon },
+    '@/entities/contract': { ...entity, useContract: () => ({ data: view }), useContracts: () => ({ data: [view] }) },
+    '@/features/manage-tranches': {
+      IssueTranche: ({ contract }) => React.createElement('button', { disabled: !contract.canIssueTranche }, 'Получить транш'),
+      RepayTranche: ({ tranche }) => tranche.status !== 'REPAID'
+        ? React.createElement('button', null, `Погасить транш № ${tranche.id}`) : null,
+    },
+    '@/shared/api': { useApiScope: () => 1 }, '@/shared/config': { ROUTES: { credits: '/credits', documents: '/documents' } },
+    '@/shared/lib': format, '@/shared/ui': { RequestState }, './ContractOverview.module.scss': styles,
+  })
+  const html = renderToStaticMarkup(React.createElement(ContractOverview))
+  assert.ok(html.includes('Фиксированный срок нового транша</dt><dd>90 дней'))
+  assert.ok(html.includes('Согласованная ставка</dt><dd>25% годовых'))
+  assert.ok(html.includes(format.formatDate(contract.trancheTerms.dueDate)))
+  assert.ok(html.includes('30 дней · 24,5% годовых'))
+  assert.ok(html.includes('60 дней · 24,75% годовых'))
+  assert.ok(html.includes('Погасить транш № 11'))
+  assert.ok(!html.includes('Погасить транш № 22'))
+  assert.ok(html.includes(format.formatMoney(tranche.totalToRepay, { exact: true })))
+  assert.ok(html.includes('После погашения использованный лимит не восстанавливается'))
+  assert.ok(html.includes('Погашение открытых траншей доступно ниже'))
+  assert.ok(html.includes('Документы договора'))
+  assert.ok(html.includes('aria-label="Обновить договор"'))
+  assert.ok(html.includes(entity.contractIssueBlockedLabels.CONTRACT_ENDING))
+  params = {}
+  const list = renderToStaticMarkup(React.createElement(ContractOverview))
+  assert.ok(list.includes('Срок каждого транша'))
+  assert.ok(list.includes('90 дней'))
+  assert.ok(list.includes('Ставка по договору'))
+  assert.ok(list.includes('25% годовых'))
+  assert.ok(list.includes('Доступный лимит'))
+  assert.ok(list.includes(format.formatMoney(view.availableLimit, { exact: true })))
+  assert.ok(list.includes('Договор и транши'))
+  assert.ok(list.includes(entity.contractIssueBlockedLabels.CONTRACT_EXPIRED))
+})
+
+test('credit summary shows agreed fixed terms and fixed-term date/rate blockers without removing repayment navigation', () => {
+  let view = { ...plain(contract), endDate: '2026-12-01', canIssueTranche: false, issueBlockedReason: 'CONTRACT_ENDING',
+    trancheTerms: { ...contract.trancheTerms, available: false } }
+  let requiredActions = []
+  const Icon = () => React.createElement('svg')
+  const { CreditSummary } = load('widgets/credit-summary/ui/CreditSummary/CreditSummary.tsx', {
+    react: React, 'react-router-dom': { useNavigate: () => () => {} },
+    '@alfalab/core-components/button': { Button }, '@alfalab/core-components/typography': { Typography },
+    '@alfalab/icons/glyph/dist/ArrowRightMIcon': { ArrowRightMIcon: Icon },
+    '@alfalab/icons/glyph/dist/WalletMIcon': { WalletMIcon: Icon },
+    '@/entities/dashboard': { useDashboard: () => ({ data: { activeContract: view, requiredActions } }) },
+    '@/entities/contract': entity, '@/shared/config': { ROUTES: { credits: '/credits' } },
+    '@/shared/lib': format, '@/shared/ui': { Skeleton: () => null }, './CreditSummary.module.scss': styles,
+  })
+  const render = () => renderToStaticMarkup(React.createElement(CreditSummary))
+  let html = render()
+  assert.ok(html.includes('Фиксированный срок траншей</dt><dd>90 дней'))
+  assert.ok(html.includes('Согласованная ставка</dt><dd>25% годовых'))
+  assert.ok(html.includes(entity.contractIssueBlockedLabels.CONTRACT_ENDING))
+  assert.ok(html.includes('Лимит расходуется на общую сумму всех траншей'))
+  assert.ok(!html.includes('меньший срок'))
+  view = { ...view, issueBlockedReason: 'RATE_UNAVAILABLE', trancheTerms: { ...view.trancheTerms, available: true, ratePercent: null } }
+  html = render()
+  assert.ok(html.includes(entity.contractIssueBlockedLabels.RATE_UNAVAILABLE))
+  assert.ok(!html.includes('null%'))
+  view = { ...view, status: 'EXPIRED', issueBlockedReason: 'CONTRACT_EXPIRED' }
+  requiredActions = [{ code: 'REPAY_TRANCHE', title: 'Погасить транш' }]
+  html = render()
+  assert.ok(html.includes(entity.contractIssueBlockedLabels.CONTRACT_EXPIRED))
+  assert.ok(html.includes('Погасить транши'))
 })

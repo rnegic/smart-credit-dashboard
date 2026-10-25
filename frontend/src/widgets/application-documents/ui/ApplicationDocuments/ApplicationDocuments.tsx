@@ -41,9 +41,14 @@ function DocumentPackage({ application }: { application: ApplicationView }) {
               {application.companyName}
             </Typography.TitleResponsive>
             {offer && (
-              <Typography.Text view="primary-small" color="secondary">
-                Лимит {formatMoney(offer.amount, { exact: true })} · Срок договора {offer.contractTermMonths == null ? 'не указан' : `${offer.contractTermMonths} мес.`}
-              </Typography.Text>
+              <>
+                <Typography.Text view="primary-small" color="secondary">
+                  Лимит {formatMoney(offer.amount, { exact: true })} · Срок договора {offer.contractTermMonths == null ? 'не указан' : `${offer.contractTermMonths} мес.`}
+                </Typography.Text>
+                <Typography.Text view="primary-small" color="secondary">
+                  Срок транша: {offer.termDays} дней · Ставка по договору: {String(offer.finalRate).replace('.', ',')}% годовых
+                </Typography.Text>
+              </>
             )}
           </div>
           {data && data.documents.length > 0 && (
