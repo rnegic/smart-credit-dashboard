@@ -59,13 +59,18 @@
 }
 
 .documents {
+  display: grid;
+  gap: var(--gap-12);
   margin: var(--gap-0);
   padding: var(--gap-0);
   list-style: none;
 }
 
-.document + .document {
-  border-block-start: 1px solid var(--color-light-neutral-translucent-100);
+.document {
+  border-radius: var(--border-radius-16);
+  padding: var(--gap-6) var(--gap-16);
+  background: var(--color-light-base-bg-secondary);
+  overflow: hidden;
 }
 
 .documentIcon {
