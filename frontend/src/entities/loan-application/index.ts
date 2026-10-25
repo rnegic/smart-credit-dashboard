@@ -179,7 +179,8 @@ export function useApplications() {
       query.state.data?.some(
         (application) =>
           application.status === 'IN_REVIEW' ||
-          application.status === 'OFFER_READY',
+          application.status === 'OFFER_READY' ||
+          application.status === 'SIGNATURE_PENDING',
       )
         ? 15_000
         : false,

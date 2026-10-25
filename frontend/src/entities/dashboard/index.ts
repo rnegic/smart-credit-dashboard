@@ -90,7 +90,7 @@ export function useDashboard() {
     enabled: scope !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.currentApplication?.status
-      return status === 'IN_REVIEW' || status === 'OFFER_READY' ? 15_000 : false
+      return status === 'IN_REVIEW' || status === 'OFFER_READY' || status === 'SIGNATURE_PENDING' ? 15_000 : false
     },
   })
 }
