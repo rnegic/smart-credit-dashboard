@@ -4,6 +4,7 @@ export const ROUTES = {
   bank: '/bank',
   applications: '/applications',
   credits: '/credits',
+  contract: (id = ':contractId') => `/credits/${id}`,
   documents: '/documents',
   catalog: '/products',
   productDetails: (id = ':id') => `/products/${id}`,

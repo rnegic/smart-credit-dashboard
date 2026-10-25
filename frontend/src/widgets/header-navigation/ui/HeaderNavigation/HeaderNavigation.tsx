@@ -23,7 +23,7 @@ import styles from './HeaderNavigation.module.scss'
 const items = [
   { path: ROUTES.dashboard, label: 'Главная', Icon: HouseMIcon },
   { path: ROUTES.applications, label: 'Заявки', Icon: DocumentMIcon },
-  { path: ROUTES.credits, label: 'Кредиты и лимиты', Icon: WalletMIcon },
+  { path: ROUTES.credits, label: 'Договор и овердрафты', Icon: WalletMIcon },
   {
     path: ROUTES.documents,
     label: 'Документы',
@@ -43,7 +43,7 @@ function Navigation({ onNavigate }: NavigationProps) {
         <NavLink
           key={path}
           to={path}
-          end
+           end={path !== ROUTES.credits}
           onClick={onNavigate}
           className={({ isActive }) =>
             `${styles.navLink} ${isActive ? styles.active : ''}`

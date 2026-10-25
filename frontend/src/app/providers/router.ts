@@ -26,6 +26,7 @@ export const router = createBrowserRouter(
             { path: ROUTES.dashboard, Component: DashboardPage },
             { path: ROUTES.applications, Component: ApplicationsPage },
             { path: ROUTES.credits, Component: CreditsPage },
+            { path: ROUTES.contract(), Component: CreditsPage },
             { path: ROUTES.documents, Component: DocumentsPage },
             { path: ROUTES.application.root, Component: ApplicationPage },
             { path: '*', Component: NotFoundPage },
