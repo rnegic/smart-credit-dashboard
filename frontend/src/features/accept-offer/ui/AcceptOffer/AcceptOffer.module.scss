@@ -141,6 +141,8 @@
 
 .comment {
   display: grid;
+  background-color: var(--color-light-neutral-translucent-200);
+  padding: var(--gap-16);
   gap: var(--gap-12);
   padding-inline-start: var(--gap-20);
 }
