@@ -284,6 +284,7 @@
   .stepper li[aria-current='step'] {
     flex: 1;
     flex-direction: row;
+    align-items: center;
   }
   .stepper li:not([aria-current='step']) {
     font-size: 0;
