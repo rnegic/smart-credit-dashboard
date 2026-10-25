@@ -36,6 +36,7 @@ const filters = [
   { key: 'ALL', label: 'Все заявки', Icon: null },
   { key: 'IN_REVIEW', label: 'На рассмотрении', Icon: ClockSIcon },
   { key: 'OFFER_READY', label: 'Предложение банка', Icon: DocumentLinesLineSIcon },
+  { key: 'SIGNATURE_PENDING', label: 'На подписании', Icon: DocumentLinesLineSIcon },
   { key: 'ACCEPTED', label: 'Принято', Icon: CheckmarkCircleSIcon },
   { key: 'DECLINED', label: 'Отказ', Icon: CrossCircleSIcon },
 ] as const

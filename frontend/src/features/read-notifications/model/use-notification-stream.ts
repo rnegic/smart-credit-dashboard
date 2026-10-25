@@ -37,7 +37,7 @@ export function useNotificationStream() {
     let checkingSession = false
 
     function refresh() {
-      for (const resource of ['notifications', 'dashboard', 'applications'])
+      for (const resource of ['notifications', 'dashboard', 'applications', 'documents'])
         void cache.invalidateQueries({ queryKey: ['client', scope, resource] })
     }
 
