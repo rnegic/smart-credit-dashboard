@@ -11,6 +11,7 @@ const draftSchema = z.object({
   description: z.string(),
   amount: z.string(),
   termDays: z.string(),
+  contractTermMonths: z.string().default(''),
   purpose: z.string(),
   ipEdits: z
     .object({

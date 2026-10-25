@@ -21,7 +21,6 @@ import { DocumentMIcon } from '@alfalab/icons/glyph/dist/DocumentMIcon'
 import {
   applicationViewSchema,
   applicationPurposeLabels,
-  createApplicationSchema,
   getApplicationPurposeLabel,
 } from '@/entities/loan-application'
 import {
@@ -76,11 +75,31 @@ import {
 } from '../../model/local-draft'
 import styles from './ApplicationForm.module.scss'
 
-const emptyDraft = { description: '', amount: '', termDays: '', purpose: '' }
+const emptyDraft = {
+  description: '',
+  amount: '',
+  termDays: '',
+  contractTermMonths: '',
+  purpose: '',
+}
 const termOptions = [30, 60, 90].map((days) => ({
   key: String(days),
   content: `${days} дней`,
 }))
+const contractTermOptions = [6, 12, 24].map((months) => ({
+  key: String(months),
+  content: `${months} месяцев`,
+}))
+const financingSchema =
+  applicationFormSubmissionSchema.shape.step1_financingParameters.omit({
+    businessTask: true,
+  })
+const limitHint =
+  'Общая сумма всех траншей за весь срок договора. Погашение траншей не восстанавливает лимит.'
+const contractTermHint =
+  '6, 12 или 24 месяца. В течение срока договора можно получать транши в пределах оставшегося лимита.'
+const trancheTermHint =
+  '30, 60 или 90 дней для расчёта ориентировочных условий. Фактический срок выбирается при получении каждого транша, а ставку определяет сервер.'
 const oooPurposeOptions = Object.entries(applicationPurposeLabels).map(
   ([key, content]) => ({ key, content }),
 )
@@ -156,6 +175,9 @@ function financingFields(responseForm: ApplicationForm) {
     description: responseForm.step1_financingParameters.businessTask ?? '',
     amount: inputValue(responseForm.step1_financingParameters.amount),
     termDays: inputValue(responseForm.step1_financingParameters.termDays),
+    contractTermMonths: inputValue(
+      responseForm.step1_financingParameters.contractTermMonths,
+    ),
     purpose: responseForm.step1_financingParameters.purpose ?? '',
   }
 }
@@ -321,16 +343,23 @@ function ApplicationFormEditor({
           description: localDraft.description,
           amount: localDraft.amount,
           termDays: localDraft.termDays,
+          contractTermMonths: localDraft.contractTermMonths,
           purpose: localDraft.purpose,
         }
       : initialDraft
         ? financingFields(initialDraft.form)
         : emptyDraft,
   )
+  const needsContractTermReview =
+    Boolean(localDraft || initialDraft) &&
+    !financingSchema.shape.contractTermMonths.safeParse(
+      numberOrNull(form.contractTermMonths),
+    ).success
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(
-    localDraft?.currentStep ??
-      (needsFinancingReview ? 0 : getApplicationDraftStep(initialDraft)),
+    needsFinancingReview || needsContractTermReview
+      ? 0
+      : (localDraft?.currentStep ?? getApplicationDraftStep(initialDraft)),
   )
   const [started, setStarted] = useState(
     localDraft?.started ?? Boolean(initialDraft),
@@ -362,6 +391,7 @@ function ApplicationFormEditor({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const formRef = useRef<HTMLFormElement>(null)
   const termRef = useRef<HTMLDivElement>(null)
+  const contractTermRef = useRef<HTMLDivElement>(null)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const companyPanelTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -677,6 +707,7 @@ function ApplicationFormEditor({
             : null),
         amount: numberOrNull(form.amount),
         termDays: numberOrNull(form.termDays),
+        contractTermMonths: numberOrNull(form.contractTermMonths),
         purpose: nullableText(form.purpose),
       },
       step2_businessData: {
@@ -1055,9 +1086,10 @@ function ApplicationFormEditor({
   function handleNext(event: FormEvent) {
     event.preventDefault()
     if (submitting.current || saving.current) return
-    const result = createApplicationSchema.safeParse({
+    const result = financingSchema.safeParse({
       amount: Number(form.amount.replace(/\s/g, '').replace(',', '.')),
       termDays: Number(form.termDays),
+      contractTermMonths: Number(form.contractTermMonths),
       purpose: form.purpose,
     })
     if (!result.success) {
@@ -1073,6 +1105,7 @@ function ApplicationFormEditor({
       else {
         const field = String(result.error.issues[0]?.path[0])
         if (field === 'termDays') termRef.current?.focus()
+        else if (field === 'contractTermMonths') contractTermRef.current?.focus()
         else
           formRef.current
             ?.querySelector<HTMLInputElement>(`[name="${field}"]`)
@@ -1287,7 +1320,7 @@ function ApplicationFormEditor({
                 <div className={styles.intentEditor}>
                   <div className={styles.intentPrompt}>
                     <label htmlFor={`${id}-intent`}>Ваша бизнес-задача</label>
-                    <span>Сумма, срок и цель</span>
+                    <span>Лимит, срок договора, срок транша и цель</span>
                   </div>
                   <Textarea
                     id={`${id}-intent`}
@@ -1302,14 +1335,16 @@ function ApplicationFormEditor({
                     readOnly={prefill.isPending}
                     value={form.description}
                     error={errors.description}
-                    placeholder="Например: нужно 1,5 млн ₽ на закупку товара на 60 дней"
+                    placeholder="Например: лимит 1,5 млн ₽ на год, транши на закупку товара на 60 дней"
                     onChange={(_, { value }) =>
                       setForm({ ...form, description: value })
                     }
                   />
                   <p className={styles.intentTerms} id={`${id}-intent-terms`}>
-                    <strong>Срок транша: только 30, 60 или 90 дней.</strong>{' '}
-                    Укажите его в описании. Это не срок всего договора.
+                    <strong>Срок договора: 6, 12 или 24 месяца.</strong>{' '}
+                    Ориентировочный срок транша: 30, 60 или 90 дней. Укажите оба
+                    срока в описании. Фактический срок каждого транша выбирается
+                    при его получении.
                   </p>
                 </div>
               </div>
@@ -1395,7 +1430,10 @@ function ApplicationFormEditor({
             <p>
               Шаг {step + 1} из {steps.length}: {steps[step]}
               {form.amount
-                ? ` · ${formatMoney(numberOrNull(form.amount) ?? 0)}`
+                ? ` · Лимит договора ${formatMoney(numberOrNull(form.amount) ?? 0)}`
+                : ''}
+              {form.contractTermMonths && !needsContractTermReview
+                ? ` · Срок договора ${form.contractTermMonths} мес.`
                 : ''}
             </p>
             <p>
@@ -1590,16 +1628,22 @@ function ApplicationFormEditor({
             </h2>
             <p>
               {step === 0 || step === steps.length - 1
-                ? 'Бизнес-задача необязательна. Сумма, срок, цель и остальные сведения анкеты обязательны.'
+                ? 'Бизнес-задача необязательна. Лимит договора, срок договора, ориентировочный срок транша, цель и остальные сведения анкеты обязательны.'
                 : isOoo
                   ? 'Заполните обязательные сведения об организации. Если обязательств нет, оставьте 0.'
                   : 'Все поля анкеты обязательны.'}
             </p>
             {needsDebtReview && (
               <p role="status">
-                Условия изменились: выберите срок в днях и повторно укажите
-                ежемесячный платеж по кредитам. Остальные данные черновика
-                сохранены.
+                Условия изменились: выберите ориентировочный срок транша в днях
+                и повторно укажите ежемесячный платеж по кредитам. Остальные
+                данные черновика сохранены.
+              </p>
+            )}
+            {needsContractTermReview && (
+              <p role="status">
+                Уточните срок договора в черновике: выберите 6, 12 или 24 месяца.
+                Остальные данные сохранены.
               </p>
             )}
             {step === 0 && (
@@ -1627,14 +1671,14 @@ function ApplicationFormEditor({
                     name="amount"
                     required
                     block
-                    label="Сумма, ₽"
+                    label="Лимит договора, ₽"
                     labelView="outer"
                     inputMode="decimal"
                     value={form.amount}
                     hint={
                       aiFilled.has('step1_financingParameters.amount')
-                        ? 'Заполнено автоматически, проверьте'
-                        : undefined
+                        ? `${limitHint} Заполнено автоматически, проверьте`
+                        : limitHint
                     }
                     error={
                       errors.amount ??
@@ -1648,20 +1692,48 @@ function ApplicationFormEditor({
                     }
                   />
                   <Select
+                    ref={contractTermRef}
+                    id={`${id}-contractTermMonths`}
+                    name="contractTermMonths"
+                    block
+                    label="Срок договора"
+                    labelView="outer"
+                    fieldProps={{ 'aria-required': true }}
+                    options={contractTermOptions}
+                    selected={form.contractTermMonths || null}
+                    placeholder="Выберите срок договора"
+                    hint={
+                      aiFilled.has('step1_financingParameters.contractTermMonths')
+                        ? `${contractTermHint} Заполнено автоматически, проверьте`
+                        : contractTermHint
+                    }
+                    error={
+                      errors.contractTermMonths ??
+                      (missingFields.has(
+                        'step1_financingParameters.contractTermMonths',
+                      ) && !form.contractTermMonths.trim()
+                        ? 'Заполните поле'
+                        : undefined)
+                    }
+                    onChange={({ selected }) =>
+                      setForm({ ...form, contractTermMonths: selected?.key ?? '' })
+                    }
+                  />
+                  <Select
                     ref={termRef}
                     id={`${id}-termDays`}
                     name="termDays"
                     block
-                    label="Срок, дней"
+                    label="Ориентировочный срок транша"
                     labelView="outer"
                     fieldProps={{ 'aria-required': true }}
                     options={termOptions}
                     selected={form.termDays || null}
-                    placeholder="Выберите срок"
+                    placeholder="Выберите срок транша"
                     hint={
                       aiFilled.has('step1_financingParameters.termDays')
-                        ? 'Заполнено автоматически, проверьте'
-                        : undefined
+                        ? `${trancheTermHint} Заполнено автоматически, проверьте`
+                        : trancheTermHint
                     }
                     error={
                       errors.termDays ??
@@ -1725,9 +1797,10 @@ function ApplicationFormEditor({
                   )}
                 </div>
                 <p>
-                  Сумма от 50 000 до 20 000 000 ₽, срок 30, 60 или 90 дней.
-                  Подходящие продукты и условия будут доступны после
-                  рассмотрения заявки.
+                  Лимит договора от 50 000 до 20 000 000 ₽ на 6, 12 или 24 месяца.
+                  Можно получить несколько траншей на общую сумму не более
+                  лимита. Погашение траншей не восстанавливает лимит. Условия
+                  будут доступны после рассмотрения заявки.
                 </p>
               </>
             )}
@@ -1822,15 +1895,15 @@ function ApplicationFormEditor({
                   <div>
                     <FieldLabel
                       htmlFor={`${id}-reviewAmount`}
-                      text="Сумма, ₽"
-                      hint="Запрашиваемая сумма финансирования"
+                      text="Лимит договора, ₽"
+                      hint={limitHint}
                     />
                     <Input
                       id={`${id}-reviewAmount`}
                       name="reviewAmount"
                       required
                       block
-                      aria-label="Сумма, ₽"
+                      aria-label="Лимит договора, ₽"
                       inputMode="decimal"
                       value={form.amount}
                       onChange={(_, { value }) =>
@@ -1840,16 +1913,45 @@ function ApplicationFormEditor({
                   </div>
                   <div>
                     <Select
+                      id={`${id}-reviewContractTermMonths`}
+                      name="reviewContractTermMonths"
+                      block
+                      label="Срок договора"
+                      labelView="outer"
+                      fieldProps={{ 'aria-required': true }}
+                      options={contractTermOptions}
+                      selected={form.contractTermMonths || null}
+                      placeholder="Выберите срок договора"
+                      hint={
+                        aiFilled.has('step1_financingParameters.contractTermMonths')
+                          ? `${contractTermHint} Заполнено автоматически, проверьте`
+                          : contractTermHint
+                      }
+                      error={
+                        errors.contractTermMonths ??
+                        (missingFields.has(
+                          'step1_financingParameters.contractTermMonths',
+                        ) && !form.contractTermMonths.trim()
+                          ? 'Заполните поле'
+                          : undefined)
+                      }
+                      onChange={({ selected }) =>
+                        setForm({ ...form, contractTermMonths: selected?.key ?? '' })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Select
                       id={`${id}-reviewTermDays`}
                       name="reviewTermDays"
                       block
-                      label="Срок, дней"
+                      label="Ориентировочный срок транша"
                       labelView="outer"
                       fieldProps={{ 'aria-required': true }}
-                      hint="Доступные сроки: 30, 60 или 90 дней"
+                      hint={trancheTermHint}
                       options={termOptions}
                       selected={form.termDays || null}
-                      placeholder="Выберите срок"
+                      placeholder="Выберите срок транша"
                       onChange={({ selected }) =>
                         setForm({ ...form, termDays: selected?.key ?? '' })
                       }
@@ -1939,8 +2041,9 @@ function ApplicationFormEditor({
                   </>
                 )}
                 <p>
-                  Ставка и платеж будут указаны в предложении банка. Отправка
-                  заявки не означает одобрение кредита.
+                  Ориентировочная ставка и платеж будут указаны в предложении
+                  банка. Фактический срок и ставка каждого транша выбираются при
+                  его получении. Отправка заявки не означает одобрение кредита.
                 </p>
               </>
             )}
