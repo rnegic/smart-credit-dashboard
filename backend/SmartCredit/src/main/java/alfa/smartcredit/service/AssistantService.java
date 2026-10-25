@@ -75,8 +75,14 @@ public class AssistantService {
               но не свидетельствуют об отправке или сохранении.
             - В форме НЕТ селектора продукта. Упоминание овердрафта в примере не означает выбор продукта.
               Не предлагай выбрать продукт и не выдумывай выбранный продукт по примерам или history.
-              productRules содержит только общие пределы суммы в рублях и сроки транша в днях,
-              а не одобренные условия. Ставки, суммы и сроки предложения называй только по фактам сервера.
+              productRules содержит только общие пределы суммы в рублях, сроки транша в днях и допустимые
+              сроки договора в месяцах, а не одобренные условия. Ставки, суммы и сроки предложения называй
+              только по фактам сервера.
+            - Продукт: договор овердрафта на 6, 12 или 24 месяца с лимитом. Внутри договора клиент может брать
+              несколько траншей на 30, 60 или 90 дней на любую сумму, пока не исчерпан лимит. Ставка зависит от
+              срока транша и фиксируется при получении. activeContract (если не null) - факты о действующем договоре:
+              лимит, использованный и доступный лимит, транши. Транш считается полученным только если он есть
+              в activeContract.tranches.
             - IN_REVIEW: заявка на рассмотрении, одобрение не гарантировано.
               OFFER_READY: предложение готово, следующий этап - принять условия предложения.
               SIGNATURE_PENDING: условия приняты, нужно подписать два документа.
@@ -192,7 +198,8 @@ public class AssistantService {
         var app = dashboard.currentApplication();
         if (app == null) facts.putNull("latestApplication");
         else facts.putObject("latestApplication")
-                .put("requestedAmount", app.amount()).put("termDays", app.termDays())
+                .put("requestedLimit", app.amount()).put("trancheTermDays", app.termDays())
+                .put("contractTermMonths", app.contractTermMonths())
                 .put("baseRate", app.rate()).put("status", app.status())
                 .put("decision", app.decision()).put("finalRate", app.finalRate());
 
@@ -205,9 +212,29 @@ public class AssistantService {
         facts.put("offersCount", dashboard.offers().size());
         var offers = facts.putArray("offers");
         dashboard.offers().stream().limit(5).forEach(offer -> offers.addObject()
-                .put("amount", offer.amount()).put("termDays", offer.termDays())
+                .put("limit", offer.amount()).put("trancheTermDays", offer.termDays())
+                .put("contractTermMonths", offer.contractTermMonths())
                 .put("finalRate", offer.finalRate()).put("monthlyPayment", offer.monthlyPayment())
                 .put("validUntil", offer.validUntil() == null ? null : offer.validUntil().toString()));
+
+        var contract = dashboard.activeContract();
+        if (contract == null) facts.putNull("activeContract");
+        else {
+            var c = facts.putObject("activeContract")
+                    .put("contractTermMonths", contract.contractTermMonths())
+                    .put("startDate", contract.startDate() == null ? null : contract.startDate().toString())
+                    .put("endDate", contract.endDate() == null ? null : contract.endDate().toString())
+                    .put("limit", contract.limit()).put("usedLimit", contract.usedLimit())
+                    .put("availableLimit", contract.availableLimit())
+                    .put("limitIsRevolving", contract.revolving())
+                    .put("canIssueTranche", contract.canIssueTranche())
+                    .put("issueBlockedReason", contract.issueBlockedReason());
+            var trs = c.putArray("tranches");
+            contract.tranches().stream().limit(10).forEach(t -> trs.addObject()
+                    .put("amount", t.amount()).put("termDays", t.termDays()).put("ratePercent", t.ratePercent())
+                    .put("status", t.status())
+                    .put("dueDate", t.dueDate() == null ? null : t.dueDate().toString()));
+        }
 
         var loan = dashboard.activeLoan();
         if (loan == null) facts.putNull("activeLoan");
@@ -224,6 +251,7 @@ public class AssistantService {
         var rules = facts.putObject("productRules")
                 .put("minAmount", ProductRules.MIN_AMOUNT).put("maxAmount", ProductRules.ABSOLUTE_MAX_AMOUNT);
         rules.set("termDays", mapper.valueToTree(ProductRules.TERM_DAYS.stream().sorted().toList()));
+        rules.set("contractTermMonths", mapper.valueToTree(ProductRules.CONTRACT_TERM_MONTHS.stream().sorted().toList()));
         return facts;
     }
 

@@ -38,6 +38,8 @@ public class AiCommentService {
     private static final String OFFICER_COMMENT_PROMPT = """
         Ты кредитный аналитик банка. Сотрудник банка принял решение по заявке малого бизнеса.
         Составь краткий (2-3 предложения) комментарий от лица сотрудника, обосновывающий это решение.
+        Продукт: договор овердрафта на contractTermMonths месяцев с лимитом (amount); внутри договора клиент
+        берёт несколько траншей на 30/60/90 дней, пока не исчерпан лимит.
         Правила:
         - Используй только переданные данные, ничего не выдумывай.
         - officerAction = "APPROVE" — обоснуй одобрение запрошенных условий.
@@ -61,13 +63,15 @@ public class AiCommentService {
         this.model = model;
     }
 
-    public String comment(ScoringService.Result r, DecisionEngine.Decision rec, BigDecimal amount, int termDays) {
+    public String comment(ScoringService.Result r, DecisionEngine.Decision rec, BigDecimal amount, int termDays,
+                          Integer contractTermMonths) {
         String fallback = fallback(r, rec);
         if (apiKey == null || apiKey.isBlank()) return fallback;
         try {
             Map<String, Object> facts = new LinkedHashMap<>();
-            facts.put("requestedAmount", amount);
-            facts.put("termDays", termDays);
+            facts.put("requestedLimit", amount);
+            facts.put("trancheTermDays", termDays);
+            facts.put("contractTermMonths", contractTermMonths);
             facts.put("internalScore", r.internalScore());
             facts.put("riskClass", r.riskClass());
             facts.put("dtiPercent", r.dtiPercent());
@@ -125,17 +129,21 @@ public class AiCommentService {
                 + e.delinquencies12m() + ", " + trend + ". " + verdict;
     }
     public String commentForOfficer(ScoringService.Result r, BigDecimal requestedAmount,
-                                    Integer requestedTermDays, CommentSuggestionRequest req) {
+                                    Integer requestedTermDays, Integer requestedContractTermMonths,
+                                    CommentSuggestionRequest req) {
         String fallback = fallbackForOfficer(r, requestedAmount, requestedTermDays, req);
         if (apiKey == null || apiKey.isBlank()) return fallback;
         try {
             Map<String, Object> facts = new LinkedHashMap<>();
             facts.put("requestedAmount", requestedAmount);
             facts.put("requestedTermDays", requestedTermDays);
+            facts.put("requestedContractTermMonths", requestedContractTermMonths);
             facts.put("officerAction", req.action());
             if (req.action() != DecisionRequest.Action.DECLINE) {
                 facts.put("proposedAmount", req.amount() != null ? req.amount() : requestedAmount);
                 facts.put("proposedTermDays", req.termDays() != null ? req.termDays() : requestedTermDays);
+                facts.put("proposedContractTermMonths", req.contractTermMonths() != null
+                        ? req.contractTermMonths() : requestedContractTermMonths);
                 facts.put("proposedRate", req.finalRate());
             }
 

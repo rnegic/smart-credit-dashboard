@@ -18,10 +18,12 @@ public record ApplicationView(
         String inn,
         @Schema(description = "Правовая форма", example = "IP", allowableValues = {"IP", "OOO"})
         String legalForm,
-        @Schema(description = "Запрошенная сумма, ₽", example = "500000")
+        @Schema(description = "Запрошенный лимит договора, ₽", example = "500000")
         BigDecimal amount,
-        @Schema(description = "Срок кредита в днях: 30, 60 или 90", example = "60")
+        @Schema(description = "Ориентировочный срок транша в днях: 30, 60 или 90", example = "60")
         Integer termDays,
+        @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
+        Integer contractTermMonths,
         @Schema(description = "Базовая ставка по сроку, %", example = "18.5")
         BigDecimal rate,
         @Schema(description = "Цель кредита", example = "Оборотные средства")
@@ -71,18 +73,24 @@ public record ApplicationView(
     public record OfferView(
             @Schema(description = "Идентификатор оферты", example = "1")
             Long id,
-            @Schema(description = "Сумма, ₽", example = "500000")
+            @Schema(description = "Лимит договора, ₽: общая сумма траншей за весь срок", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Срок в днях", example = "60")
+            @Schema(description = "Ориентировочный срок транша в днях (для расчёта ставки и примера платежа)", example = "60")
             Integer termDays,
-            @Schema(description = "Ставка, %", example = "18.5")
+            @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
+            Integer contractTermMonths,
+            @Schema(description = "Ставка для ориентировочного срока транша, %", example = "18.5")
             BigDecimal finalRate,
-            @Schema(description = "Ежемесячный платёж, ₽", example = "84917.32")
+            @Schema(description = "Пример платежа, если взять весь лимит одним траншем на termDays, ₽", example = "84917.32")
             BigDecimal monthlyPayment,
             @Schema(description = "Оферта действует до", example = "2027-01-23")
             LocalDate validUntil,
             @Schema(description = "Статус оферты", example = "ACTIVE")
-            String status) {}
+            String status,
+            @Schema(description = "Начало договора (дата подписания); null до подписания", example = "2026-10-25")
+            LocalDate contractStart,
+            @Schema(description = "Окончание договора; null до подписания", example = "2027-10-25")
+            LocalDate contractEnd) {}
 
     @Schema(description = "Возраст компании")
     public record CompanyAge(

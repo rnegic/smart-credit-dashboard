@@ -1,6 +1,7 @@
 package alfa.smartcredit.dto;
 
 import alfa.smartcredit.model.enums.RevenueTrend;
+import alfa.smartcredit.validation.ValidContractTerm;
 import alfa.smartcredit.validation.ValidTermDays;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -44,11 +45,16 @@ public record ApplicationFormDto(
             @Schema(description = "Бизнес-задача, на которую берётся кредит",
                     example = "Закупка лицензий ПО и серверного оборудования для разработки")
             @NotBlank @Size(max = 500) String businessTask,
-            @Schema(description = "Запрошенная сумма, ₽ (от 50 000 до 20 000 000)",
+            @Schema(description = "Запрошенный лимит договора, ₽ (от 50 000 до 20 000 000): общая сумма траншей за весь срок договора",
                     example = "500000", minimum = "50000", maximum = "20000000")
             @NotNull @DecimalMin("50000") @DecimalMax("20000000") BigDecimal amount,
-            @Schema(description = "Срок кредита в днях: 30, 60 или 90", example = "60")
+            @Schema(description = "Ориентировочный срок транша в днях: 30, 60 или 90. По нему сервер считает ставку и "
+                    + "долговую нагрузку в скоринге; фактический срок и ставка каждого транша выбираются при его получении",
+                    example = "60")
             @NotNull @ValidTermDays Integer termDays,
+            @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24. В течение этого срока клиент может "
+                    + "брать несколько траншей, пока не исчерпан лимит", example = "12")
+            @NotNull @ValidContractTerm Integer contractTermMonths,
             @Schema(description = "Процентная ставка, рассчитанная сервером по сроку",
                     example = "18.5", accessMode = Schema.AccessMode.READ_ONLY)
             BigDecimal rate,

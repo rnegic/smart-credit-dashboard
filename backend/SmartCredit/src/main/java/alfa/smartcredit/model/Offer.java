@@ -35,6 +35,14 @@ public class Offer {
     @JdbcTypeCode(SqlTypes.JSON)
     private JsonNode documents;
 
+    /** Срок договора овердрафта в месяцах: 6, 12 или 24. */
+    @Column(name = "contract_term_months") private Integer contractTermMonths;
+    /** Итоговая ставка минус базовая ставка по сроку; прибавляется к базовой ставке каждого транша. */
+    @Column(name = "rate_spread") private BigDecimal rateSpread;
+    /** Начало и конец договора: заполняются при подписании. */
+    @Column(name = "contract_start") private LocalDate contractStart;
+    @Column(name = "contract_end") private LocalDate contractEnd;
+
     @Column(name = "document_version") private String documentVersion;
     @Column(name = "signed_at") private Instant signedAt;
     @Column(name = "signed_by_id") private Long signedById;

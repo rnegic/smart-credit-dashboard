@@ -36,7 +36,7 @@ public class ApplicationFormService {
         // так как ИИ их пока не извлекает. Фронт или пользователь заполнит их на шаге 2.
         ApplicationFormDto form = new ApplicationFormDto(
                 null, Instant.now(), "DRAFT",
-                new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termDays(), null, x.purpose()),
+                new ApplicationFormDto.Step1(x.businessTask(), x.amount(), x.termDays(), x.contractTermMonths(), null, x.purpose()),
                 new ApplicationFormDto.Step2(
                         registryMock(c, x, phone, email),
                         new ApplicationFormDto.Financials(
@@ -56,6 +56,7 @@ public class ApplicationFormService {
         track(x.businessTask() != null, s1 + "businessTask", filled, missing);
         track(x.amount() != null,       s1 + "amount", filled, missing);
         track(x.termDays() != null,     s1 + "termDays", filled, missing);
+        track(x.contractTermMonths() != null, s1 + "contractTermMonths", filled, missing);
         track(x.purpose() != null,      s1 + "purpose", filled, missing);
         track(x.monthlyRevenue() != null, s2 + "financials.monthlyRevenue", filled, missing);
         track(x.existingDebt() != null, s2 + "financials.existingDebt", filled, missing);
