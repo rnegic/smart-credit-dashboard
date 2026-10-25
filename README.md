@@ -26,7 +26,7 @@ B2B-кредитный конвейер для ИП и ООО: React-клиен�
 
 | Сервис Compose | Внутри контейнера | Связи |
 | --- | --- | --- |
-| `frontend` | Nginx, порт `80` | Раздаёт собранный SPA; проксирует `/api/` на `backend:8080` |
+| `frontend` | Nginx, порт `80` | Раздаёт собранный SPA; проксирует `/api/`, `/swagger-ui/` и `/v3/api-docs` на `backend:8080` |
 | `backend` | Spring Boot, порт `8080` | Обращается к `postgres:5432` и внешнему LLM API |
 | `postgres` | PostgreSQL, порт `5432` | Хранит данные в именованном томе `pgdata` |
 
@@ -173,11 +173,11 @@ docker compose logs --tail=100 backend
 | --- | --- |
 | Frontend | [http://localhost](http://localhost) |
 | API текущей сессии | [http://localhost:8080/api/auth/me](http://localhost:8080/api/auth/me); до входа ожидается `401` |
-| Swagger UI | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) |
-| OpenAPI JSON | [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs) |
+| Swagger UI | [http://localhost/swagger-ui.html](http://localhost/swagger-ui.html); напрямую на backend — [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) |
+| OpenAPI JSON | [http://localhost/v3/api-docs](http://localhost/v3/api-docs); напрямую на backend — [http://localhost:8080/v3/api-docs](http://localhost:8080/v3/api-docs) |
 | PostgreSQL | `localhost:5432`, БД `credit_cabinet`; это TCP, не HTTP |
 
-Swagger уже подключён через `springdoc-openapi` в текущем коде. Для защищённых операций нужна сессия, созданная через `/api/auth/login`. Документация открывается напрямую на порту backend: Nginx проксирует `/api/`, но не `/swagger-ui.html` и `/v3/api-docs`.
+Swagger подключён через `springdoc-openapi`. Для защищённых операций нужна сессия, созданная через `/api/auth/login`. Nginx проксирует `/swagger-ui/`, `/swagger-ui.html` и `/v3/api-docs` на backend, поэтому документация доступна и через frontend-порт. На сервере адрес такой: `http://СЕРВЕР:<HTTP_PORT>/swagger-ui.html`.
 
 ### Готовые образы
 
@@ -202,7 +202,7 @@ Swagger уже подключён через `springdoc-openapi` в текуще
 
 | Артефакт | Ссылка или место для заполнения |
 | --- | --- |
-| Swagger / OpenAPI | [Swagger UI](http://localhost:8080/swagger-ui.html), [JSON-спецификация](http://localhost:8080/v3/api-docs) |
+| Swagger / OpenAPI | [Swagger UI](http://localhost/swagger-ui.html), [JSON-спецификация](http://localhost/v3/api-docs) |
 | Диаграмма состояний заявки | [МЕСТО ДЛЯ ССЫЛКИ НА STATE MACHINE]; переходы реализованы в [ApplicationService](backend/SmartCredit/src/main/java/alfa/smartcredit/service/ApplicationService.java) |
 | Лицензии сторонних компонентов | [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
 | Правила frontend | [frontend-rules.md](frontend/docs/frontend-rules.md); фактические зависимости фиксируются в `package.json` и `yarn.lock` |
