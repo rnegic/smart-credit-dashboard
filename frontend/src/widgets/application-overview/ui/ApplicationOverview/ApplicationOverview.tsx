@@ -5,6 +5,8 @@ import { Steps } from '@alfalab/core-components/steps'
 import { Typography } from '@alfalab/core-components/typography'
 import { ArrowRightMIcon } from '@alfalab/icons/glyph/dist/ArrowRightMIcon'
 import { ClockMIcon } from '@alfalab/icons/glyph/dist/ClockMIcon'
+import { CheckmarkMIcon } from '@alfalab/icons/glyph/dist/CheckmarkMIcon'
+import { useApplicationDocuments } from '@/entities/application-document'
 import { useDashboard } from '@/entities/dashboard'
 import {
   applicationDecisionLabels,
@@ -17,6 +19,7 @@ import {
   type ApplicationView,
 } from '@/entities/loan-application'
 import { AcceptOffer } from '@/features/accept-offer'
+import { SignDocuments } from '@/features/sign-documents'
 import { ApplicationForm } from '@/features/submit-loan-application'
 import { ROUTES } from '@/shared/config'
 import { useApiScope } from '@/shared/api'
@@ -93,6 +96,7 @@ export function ApplicationOverview({
   application: providedApplication,
 }: ApplicationOverviewProps) {
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [documentsOpen, setDocumentsOpen] = useState(false)
   const [selectedApplication, setSelectedApplication] =
     useState<Application | null>(null)
   const detailsButtonRef = useRef<HTMLButtonElement>(null)
@@ -104,7 +108,7 @@ export function ApplicationOverview({
   const currentApplication =
     providedApplication ?? dashboard.data?.currentApplication
   const applicationId =
-    detailsOpen && selectedApplication
+    (detailsOpen || documentsOpen) && selectedApplication
       ? selectedApplication.id
       : currentApplication?.id
   const applicationView =
@@ -113,7 +117,11 @@ export function ApplicationOverview({
       : undefined) ??
     applications.data?.find((item) => item.id === applicationId)
   const application =
-    applicationView ?? (detailsOpen ? selectedApplication : currentApplication)
+    applicationView ?? (detailsOpen || documentsOpen ? selectedApplication : currentApplication)
+  const signingStage = application?.status === 'SIGNATURE_PENDING'
+  const documentExperience = signingStage || application?.status === 'ACCEPTED'
+  const documents = useApplicationDocuments(application?.id, documentExperience)
+  const documentsSigned = Boolean(documents.data?.signedAt && documents.data.signedBy)
   // Company-wide dashboard offers do not identify their application.
   const offer = applicationView?.offer
   const scoring = applicationView?.scoring
@@ -130,10 +138,11 @@ export function ApplicationOverview({
     new Date(`${payment.dueDate.slice(0, 10)}T00:00:00`).getTime() <=
       urgentUntil.getTime()
   const hasPendingApplication =
-    application?.status === 'IN_REVIEW' || application?.status === 'OFFER_READY'
+    application?.status === 'IN_REVIEW' || application?.status === 'OFFER_READY' || signingStage || documentsSigned
   const showLoan =
     !providedApplication &&
     !detailsOpen &&
+    !documentsOpen &&
     loan != null &&
     (paymentIsUrgent || !hasPendingApplication)
   const offerIsValid =
@@ -146,7 +155,7 @@ export function ApplicationOverview({
     offerIsValid &&
     (providedApplication != null || !applications.isError)
 
-  if (!providedApplication && !detailsOpen) {
+  if (!providedApplication && !detailsOpen && !documentsOpen) {
     if (dashboard.isError) {
       return (
         <section className={styles.card} aria-labelledby={headingId}>
@@ -286,7 +295,9 @@ export function ApplicationOverview({
     </div>
   )
   const stages = getApplicationProgress(application.status)
-  const activeStep = stages.findIndex((stage) => stage.state === 'CURRENT') + 1
+  const currentStepIndex = stages.findIndex((stage) => stage.state === 'CURRENT')
+  const activeStep = currentStepIndex < 0 ? stages.length + 1 : currentStepIndex + 1
+  const displayedStep = Math.min(activeStep, stages.length)
   const declined = application.status === 'DECLINED'
   const checkIsStepError = (step: number) =>
     declined && stages[step - 1]?.code === 'DECISION'
@@ -326,9 +337,7 @@ export function ApplicationOverview({
                 : step.state === 'CURRENT'
                   ? awaitingClientChoice
                     ? 'ожидает вашего выбора'
-                    : step.code === 'ISSUED'
-                      ? 'ожидает выдачи'
-                      : 'текущий этап'
+                    : 'текущий этап'
                   : 'предстоит'}
         </li>
       ))}
@@ -362,14 +371,14 @@ export function ApplicationOverview({
             ? 'Загружаем комментарий кредитного специалиста…'
             : 'Комментарий кредитного специалиста пока не указан.',
     },
-      ACCEPTED: {
-      title: 'Условия приняты',
-      description: 'Ожидаем подтверждения выдачи. Деньги ещё не зачислены.',
+    ACCEPTED: {
+      title: documentsSigned ? 'Документы подписаны' : 'Условия приняты',
+      description: 'Оформление завершено.',
     },
     SIGNATURE_PENDING: {
-      title: 'Условия приняты, ожидается подписание',
+      title: 'Осталась ваша подпись',
       description:
-        'Предложение принято. Ознакомьтесь с документами и подпишите их, после этого банк оформит кредит.',
+        'Договор и индивидуальные условия. Ознакомьтесь и подпишите оба документа одним действием.',
     },
   }[application.status]
   const offerState =
@@ -383,12 +392,12 @@ export function ApplicationOverview({
               (offer.status === 'ACTIVE' && !offerIsValid)
             ? 'Срок действия предложения истёк. Подписание недоступно.'
             : offer.status === 'ACCEPTED'
-              ? 'Предложение уже принято. Повторное подписание недоступно.'
+              ? 'Предложение принято. Подписание документов проходит на отдельном этапе.'
               : !canAcceptOffer
                 ? 'Статус заявки обновляется. Подписание пока недоступно.'
                 : null
 
-    const offerExperience =
+  const offerExperience =
     awaitingClientChoice ||
     application.status === 'ACCEPTED' ||
     application.status === 'SIGNATURE_PENDING' ||
@@ -540,7 +549,7 @@ export function ApplicationOverview({
   return (
     <>
       <section
-        className={`${styles.card} ${awaitingClientChoice ? styles.offerCard : ''}`}
+        className={`${styles.card} ${awaitingClientChoice ? styles.offerCard : ''} ${documentExperience ? styles.signingCard : ''}`}
         aria-labelledby={headingId}
       >
         <div className={styles.topline}>
@@ -549,6 +558,8 @@ export function ApplicationOverview({
               className={`${styles.status}${
                 declined
                   ? ` ${styles.declined}`
+                  : documentsSigned
+                    ? ` ${styles.signedStatus}`
                   : awaitingClientChoice
                     ? ` ${styles.warning}`
                     : ''
@@ -557,8 +568,9 @@ export function ApplicationOverview({
               {application.status === 'IN_REVIEW' && (
                 <ClockMIcon aria-hidden="true" />
               )}
+              {documentsSigned && <CheckmarkMIcon aria-hidden="true" />}
               <Typography.Text view="primary-small" weight="medium">
-                {awaitingClientChoice
+                {documentsSigned ? 'Документы подписаны' : awaitingClientChoice
                   ? 'Предложение готово'
                   : applicationStatusLabels[application.status]}
               </Typography.Text>
@@ -573,7 +585,7 @@ export function ApplicationOverview({
             № {application.id}
           </Typography.Text>
         </div>
-        <div className={awaitingClientChoice ? styles.offerMain : undefined}>
+        <div className={documentExperience ? styles.signingMain : awaitingClientChoice ? styles.offerMain : undefined}>
           <div className={styles.heading}>
             <Typography.TitleResponsive
               id={headingId}
@@ -582,7 +594,9 @@ export function ApplicationOverview({
               font="system"
               weight="bold"
             >
-              {awaitingClientChoice ? (
+              {documentExperience ? (
+                signingStage ? 'Два документа до следующего шага' : documentsSigned ? 'Документы подписаны' : 'Ваши документы по заявке'
+              ) : awaitingClientChoice ? (
                 'Ваш следующий шаг для бизнеса'
               ) : (
                 <>
@@ -593,7 +607,22 @@ export function ApplicationOverview({
                 </>
               )}
             </Typography.TitleResponsive>
-            {awaitingClientChoice ? (
+            {documentExperience ? (
+              <>
+                <Typography.Text tag="p" color="secondary">
+                  {documentsSigned
+                    ? 'Оформление завершено. Договор и индивидуальные условия доступны в разделе «Документы».'
+                    : signingStage
+                      ? 'Предложение принято. Проверьте документы и поставьте подпись, не покидая кабинет.'
+                      : 'Просмотрите сохранённые документы и данные подписания.'}
+                </Typography.Text>
+                {offer && (
+                  <Typography.Text tag="p" view="primary-small">
+                    {formatMoney(offer.amount, { exact: true })} · {offer.termDays} дней · {String(offer.finalRate).replace('.', ',')}% годовых
+                  </Typography.Text>
+                )}
+              </>
+            ) : awaitingClientChoice ? (
               <Typography.Text tag="p" color="secondary">
                 Цель: {getApplicationPurposeLabel(application.purpose)}
               </Typography.Text>
@@ -623,6 +652,24 @@ export function ApplicationOverview({
             )}
           </div>
 
+          {documentExperience && (
+            <div className={styles.documentScene} aria-hidden="true">
+              <div className={styles.backSheet}>
+                <span>02 / ИНДИВИДУАЛЬНЫЕ УСЛОВИЯ</span>
+                <i /><i /><i />
+              </div>
+              <div className={styles.frontSheet}>
+                <span>01 / ДОГОВОР</span>
+                <strong>Овердрафт</strong>
+                <i /><i /><i />
+                <div className={documentsSigned ? styles.sheetSigned : styles.sheetSignature}>
+                  {documentsSigned && <CheckmarkMIcon />}
+                  {documentsSigned ? 'ПОДПИСАНО' : ''}
+                </div>
+              </div>
+              <span className={styles.documentCount}>{documentsSigned ? '2 / 2 подписано' : '02 документа · 01 подпись'}</span>
+            </div>
+          )}
           {awaitingClientChoice && (
             <div className={styles.offerSummary}>
               {offer && (
@@ -711,7 +758,7 @@ export function ApplicationOverview({
                   awaitingClientChoice ? styles.pendingChoice : undefined
                 }
               >
-                {`Этап ${activeStep} из ${stages.length} · ${stages[activeStep - 1].title}${declined ? ' · Отказ' : awaitingClientChoice ? ' · Ожидает выбора' : ''}`}
+                {`Этап ${displayedStep} из ${stages.length} · ${stages[displayedStep - 1].title}${application.status === 'ACCEPTED' ? ' · Завершено' : declined ? ' · Отказ' : awaitingClientChoice ? ' · Ожидает выбора' : ''}`}
               </span>
             </Typography.Text>
             <Steps
@@ -755,11 +802,14 @@ export function ApplicationOverview({
             rightAddons={<ArrowRightMIcon aria-hidden="true" />}
             onClick={() => {
               setSelectedApplication(application)
-              setDetailsOpen(true)
+              if (documentExperience) setDocumentsOpen(true)
+              else setDetailsOpen(true)
             }}
             ref={detailsButtonRef}
           >
-            {awaitingClientChoice
+            {documentExperience
+              ? signingStage ? 'Подписать документы' : 'Посмотреть документы'
+              : awaitingClientChoice
               ? 'Посмотреть предложение'
               : 'Подробнее о заявке'}
           </Button>
@@ -776,6 +826,11 @@ export function ApplicationOverview({
           officerComment={officerComment}
           returnFocusRef={detailsButtonRef}
           onClose={() => setDetailsOpen(false)}
+          onViewDocuments={() => {
+            setDetailsOpen(false)
+            setSelectedApplication(application)
+            setDocumentsOpen(true)
+          }}
         >
           {applicationDetails}
         </AcceptOffer>
@@ -801,6 +856,14 @@ export function ApplicationOverview({
           {applicationDetails}
         </Panel>
       )}
+      <SignDocuments
+        key={`documents-${scope}-${application.id}`}
+        application={application}
+        offer={offer}
+        open={documentsOpen}
+        onClose={() => setDocumentsOpen(false)}
+        returnFocusRef={detailsButtonRef}
+      />
     </>
   )
 }
