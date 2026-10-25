@@ -50,6 +50,8 @@ export const dashboardSchema = z.object({
         'CREATE_APPLICATION',
         'ACCEPT_OFFER',
         'SIGN_DOCUMENTS',
+        'ISSUE_TRANCHE',
+        'REPAY_TRANCHE',
       ]),
       title: z.string(),
     }),
@@ -65,6 +67,23 @@ export const dashboardSchema = z.object({
       validUntil: z.iso.date(),
     }),
   ),
+  activeContract: z.object({
+    id: z.number().int().positive(),
+    applicationId: z.number().int().positive(),
+    status: z.enum(['ACTIVE', 'EXPIRED']),
+    contractTermMonths: z.union([z.literal(6), z.literal(12), z.literal(24)]),
+    startDate: z.iso.date(),
+    endDate: z.iso.date(),
+    limit: z.number().nonnegative(),
+    usedLimit: z.number().nonnegative(),
+    availableLimit: z.number().nonnegative(),
+    outstandingPrincipal: z.number().nonnegative(),
+    revolving: z.boolean(),
+    canIssueTranche: z.boolean(),
+    issueBlockedReason: z.enum([
+      'CONTRACT_EXPIRED', 'HAS_OVERDUE_TRANCHE', 'LIMIT_EXHAUSTED', 'CONTRACT_ENDING',
+    ]).nullable(),
+  }).nullable(),
   activeLoan: z
     .object({
       id: z.number().int(),

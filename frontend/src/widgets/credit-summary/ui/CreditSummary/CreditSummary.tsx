@@ -22,7 +22,7 @@ function CreditSummarySkeleton() {
       aria-busy="true"
     >
       <span id={headingId} className={styles.screenReaderOnly}>
-        Кредиты и лимиты
+        Договор и овердрафты
       </span>
       <Skeleton width="10rem" height="1.5rem" />
       <div className={styles.body}>
@@ -55,11 +55,15 @@ function CreditSummarySkeleton() {
   )
 }
 
-/** Summarizes the active loan and next payment returned by the dashboard API. */
+/** Shows the current contract without confusing its limit with issued funds. */
 export function CreditSummary() {
   const headingId = useId()
   const navigate = useNavigate()
   const dashboard = useDashboard()
+  const contract = dashboard.data?.activeContract
+  const contractAction = dashboard.data?.requiredActions.find((action) =>
+    action.code === 'REPAY_TRANCHE' || action.code === 'ISSUE_TRANCHE',
+  )
   const loan = dashboard.data?.activeLoan
   const payment = dashboard.data?.nextPayment
 
@@ -82,7 +86,7 @@ export function CreditSummary() {
         font="system"
         weight="bold"
       >
-        Кредиты и лимиты
+        Договор и овердрафты
       </Typography.TitleResponsive>
       <div className={styles.body}>
         <span className={styles.icon}>
@@ -96,6 +100,27 @@ export function CreditSummary() {
                 : 'Загружаем сведения о кредите…'}
             </Typography.Text>
           </div>
+        ) : contract ? (
+          <>
+            <Typography.Text tag="p" view="primary-medium" weight="medium">
+              Доступно для траншей: {formatMoney(contract.availableLimit, { exact: true })}
+            </Typography.Text>
+            <dl className={styles.parameters}>
+              <div><dt>Договор</dt><dd>№ {contract.id}</dd></div>
+              <div><dt>Лимит договора</dt><dd>{formatMoney(contract.limit, { exact: true })}</dd></div>
+              <div><dt>Использовано</dt><dd>{formatMoney(contract.usedLimit, { exact: true })}</dd></div>
+              <div><dt>Основной долг</dt><dd>{formatMoney(contract.outstandingPrincipal, { exact: true })}</dd></div>
+              <div><dt>Срок договора</dt><dd>{contract.contractTermMonths} мес.</dd></div>
+              <div><dt>Действует до</dt><dd>{formatDate(contract.endDate)}</dd></div>
+            </dl>
+            <Typography.Text tag="p" view="primary-small" color="secondary">
+              {contractAction?.code === 'REPAY_TRANCHE'
+                ? 'Есть просроченный транш. Погасите его, чтобы получить новый.'
+                : contract.revolving
+                  ? 'После погашения траншей доступный лимит восстанавливается.'
+                  : 'Погашение траншей не восстанавливает лимит договора.'}
+            </Typography.Text>
+          </>
         ) : loan ? (
           <>
             <Typography.Text tag="p" view="primary-medium" weight="medium">
@@ -147,10 +172,11 @@ export function CreditSummary() {
         ) : (
           <>
             <Typography.Text tag="p" view="primary-medium" weight="medium">
-              Действующих кредитов пока нет
+              Действующего договора пока нет
             </Typography.Text>
             <Typography.Text tag="p" view="primary-small" color="secondary">
-              Принятие предложения не означает выдачу кредита.
+              Подписание договора открывает получение траншей, но не выдаёт деньги автоматически.
+              Все договоры, включая истёкшие, доступны в разделе овердрафтов.
             </Typography.Text>
           </>
         )}
@@ -167,17 +193,19 @@ export function CreditSummary() {
             Повторить загрузку
           </Button>
         </div>
-      ) : !unavailable && loan ? (
+      ) : !unavailable ? (
         <div>
           <Button
             view="text"
             size={40}
             rightAddons={<ArrowRightMIcon aria-hidden="true" />}
             onClick={() => {
-              void navigate(ROUTES.credits)
+                void navigate(contract ? ROUTES.contract(String(contract.id)) : ROUTES.credits)
             }}
           >
-            К кредитам
+            {contractAction?.code === 'REPAY_TRANCHE' ? 'Погасить транши'
+              : contractAction?.code === 'ISSUE_TRANCHE' ? 'Получить транш'
+              : 'Договоры и овердрафты'}
           </Button>
         </div>
       ) : null}
