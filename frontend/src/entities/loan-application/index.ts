@@ -64,10 +64,18 @@ const bankScoringSchema = scoringSchema.extend({
     .nullable(),
   points: z.record(z.string(), z.number().int()).nullable(),
 })
+/** Allowed overdraft contract durations in months. */
+export const contractTermMonthsSchema = z.union([
+  z.literal(6),
+  z.literal(12),
+  z.literal(24),
+], { error: 'Выберите срок договора 6, 12 или 24 месяца' })
+export type ContractTermMonths = z.infer<typeof contractTermMonthsSchema>
 export const applicationSchema = z.object({
   id: z.number().int().positive(),
   amount: z.number(),
   termDays: z.number().int(),
+  contractTermMonths: contractTermMonthsSchema.nullable(),
   rate: z.number().nullable(),
   purpose: z.string().nullable(),
   status: applicationStatusSchema,
@@ -79,13 +87,17 @@ export const offerSchema = z.object({
   id: z.number().int().positive(),
   amount: z.number(),
   termDays: z.number().int(),
+  contractTermMonths: contractTermMonthsSchema.nullable(),
   finalRate: z.number(),
   monthlyPayment: z.number(),
   validUntil: z.iso.date(),
   status: z.enum(['ACTIVE', 'ACCEPTED', 'EXPIRED']),
+  contractStart: z.iso.date().nullable(),
+  contractEnd: z.iso.date().nullable(),
 })
-/** Client responses explicitly null all bank-only fields. */
+/** Full client views default legacy contract durations and null all bank-only fields. */
 export const applicationViewSchema = applicationSchema.extend({
+  contractTermMonths: contractTermMonthsSchema,
   businessTask: z.string().nullable(),
   companyName: z.string(),
   inn: z.string(),
@@ -127,14 +139,17 @@ export const createApplicationSchema = z.object({
     .min(1, 'Укажите цель финансирования')
     .max(100, 'Не более 100 символов'),
 })
-export type Application = z.infer<typeof applicationSchema>
+/** Minimal summaries preserve nullable contract durations independently of full views. */
+export type Application = Omit<z.infer<typeof applicationSchema>, 'contractTermMonths'> & {
+  contractTermMonths: ContractTermMonths | null
+}
 export type ApplicationView = z.infer<typeof applicationViewSchema>
 export type BankApplicationView = z.infer<typeof bankApplicationViewSchema>
 export type Offer = z.infer<typeof offerSchema>
 export const applicationStatusLabels = {
   IN_REVIEW: 'На рассмотрении',
   OFFER_READY: 'Предложение банка',
-  ACCEPTED: 'Предложение принято',
+  ACCEPTED: 'Договор подписан',
   DECLINED: 'Отказ по заявке',
   SIGNATURE_PENDING: 'Подписание документов',
 } as const
