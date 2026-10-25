@@ -12,11 +12,12 @@ import { Button } from '@alfalab/core-components/button'
 import {
   useApplications,
   getApplicationPurposeLabel,
+  applicationViewSchema,
   type Application,
   type ApplicationView,
   type Offer,
 } from '@/entities/loan-application'
-import { ApiError, apiEmpty, useApiScope } from '@/shared/api'
+import { ApiError, apiRequest, getSessionGeneration, useApiScope } from '@/shared/api'
 import { formatDate, formatMoney } from '@/shared/lib'
 import { Panel } from '@/shared/ui'
 import styles from './AcceptOffer.module.scss'
@@ -28,12 +29,13 @@ export interface AcceptOfferProps {
   officerComment?: string | null
   open: boolean
   onClose: () => void
+  onViewDocuments: () => void
   returnFocusRef?: RefObject<HTMLElement | null>
   children: ReactNode
 }
 
 type OfferAction =
-  { kind: 'sign'; version: string; offer: Offer } | { kind: 'refresh' }
+  { kind: 'accept'; version: string; offer: Offer } | { kind: 'refresh' }
 
 type OfferResult =
   | { kind: 'accepted'; offer: Offer | null }
@@ -67,17 +69,18 @@ function offerDeadline(offer: Offer) {
 function isAccepted(application: ApplicationView) {
   return (
     application.status === 'ACCEPTED' ||
-    application.offer?.status === 'ACCEPTED'
+    application.status === 'SIGNATURE_PENDING'
   )
 }
 
-/** Shows linked terms, reviews their latest version, and signs only on explicit confirmation. */
+/** Accepting offer terms starts the separate document signing stage. */
 export function AcceptOffer({
   application: providedApplication,
   offer: providedOffer,
   officerComment: providedComment,
   open,
   onClose,
+  onViewDocuments,
   returnFocusRef,
   children,
 }: AcceptOfferProps) {
@@ -134,8 +137,10 @@ export function AcceptOffer({
 
   const sign = useMutation({
     retry: false,
-    mutationFn: async (action: OfferAction): Promise<OfferResult> => {
+    mutationFn: async (action: OfferAction & { generation: number }): Promise<OfferResult> => {
       const current = await refreshApplication()
+      if (action.generation !== getSessionGeneration())
+        throw new ApiError(409, 'SESSION_CHANGED', 'Профиль изменился. Повторите действие.')
       if (isAccepted(current)) return { kind: 'accepted', offer: current.offer }
       if (action.kind === 'refresh') {
         return {
@@ -161,13 +166,16 @@ export function AcceptOffer({
         return {
           kind: 'review',
           message:
-            'Предложение недоступно для подписания. Проверьте его статус и срок действия.',
+            'Предложение недоступно для принятия. Проверьте его статус и срок действия.',
         }
       }
       try {
-        await apiEmpty(`/api/offers/${current.offer.id}/sign`, {
+        const accepted = await apiRequest(`/api/offers/${current.offer.id}/accept`, applicationViewSchema, {
           method: 'POST',
         })
+        if (accepted.id !== current.id || !isAccepted(accepted))
+          throw new ApiError(200, 'INVALID_RESPONSE', 'Сервер не подтвердил принятие предложения')
+        return { kind: 'accepted', offer: accepted.offer }
       } catch (error) {
         if (error instanceof ApiError && error.code === 'SESSION_CHANGED')
           throw error
@@ -185,13 +193,13 @@ export function AcceptOffer({
           return {
             kind: 'unknown',
             message:
-              'Не удалось проверить результат подписания. Обновите статус заявки перед дальнейшими действиями.',
+              'Не удалось проверить принятие предложения. Обновите статус заявки перед дальнейшими действиями.',
           }
         }
       }
-      return { kind: 'accepted', offer: current.offer }
     },
-    onSuccess: (result) => {
+    onSuccess: (result, { generation }) => {
+      if (generation !== getSessionGeneration()) return
       setUncertain(result.kind === 'unknown')
       if (result.kind !== 'accepted') {
         setReview((previous) => ({ ...previous, confirm: false }))
@@ -207,13 +215,13 @@ export function AcceptOffer({
   const accepted =
     sign.data?.kind === 'accepted' ||
     application.status === 'ACCEPTED' ||
-    offer?.status === 'ACCEPTED'
+    application.status === 'SIGNATURE_PENDING'
   const unknown = !accepted && uncertain
   const confirm = !accepted && review.version === version && review.confirm
   const expired =
     offer != null &&
     (offer.status === 'EXPIRED' || (deadline !== null && deadline <= now))
-  const signing = sign.isPending && sign.variables?.kind === 'sign'
+  const accepting = sign.isPending && sign.variables?.kind === 'accept'
   const available =
     application.status === 'OFFER_READY' &&
     offer?.status === 'ACTIVE' &&
@@ -223,17 +231,17 @@ export function AcceptOffer({
   const displayOffer =
     sign.data?.kind === 'accepted'
       ? sign.data.offer
-      : sign.isPending && sign.variables?.kind === 'sign'
+      : sign.isPending && sign.variables?.kind === 'accept'
         ? sign.variables.offer
         : offer
   const heading = accepted
     ? 'Условия приняты'
     : confirm
-      ? 'Проверьте условия перед подписанием'
+      ? 'Подтвердите условия предложения'
       : 'Ваш следующий шаг для бизнеса'
   const screen = accepted ? 'accepted' : confirm ? 'confirm' : 'terms'
   const notice = unknown
-    ? 'Не удалось проверить результат подписания. Обновите статус заявки перед дальнейшими действиями.'
+    ? 'Не удалось проверить принятие предложения. Обновите статус заявки перед дальнейшими действиями.'
     : review.updated
       ? 'Предложение обновилось. Проверьте условия ещё раз'
       : sign.data && sign.data.kind !== 'accepted'
@@ -249,20 +257,20 @@ export function AcceptOffer({
   function refresh() {
     if (submitting.current) return
     submitting.current = true
-    sign.mutate({ kind: 'refresh' })
+    sign.mutate({ kind: 'refresh', generation: getSessionGeneration() })
   }
 
   const footer = (
     <div className={styles.footer} aria-busy={sign.isPending}>
       {accepted ? (
-        <Button view="primary" block size={48} onClick={close}>
-          К заявке
+        <Button view="primary" block size={48} onClick={onViewDocuments}>
+          Перейти к документам
         </Button>
-      ) : unknown || (!available && !signing) ? (
+      ) : unknown || (!available && !accepting) ? (
         <>
           {!unknown && (
             <Button view="primary" block size={48} disabled>
-              Перейти к подписанию
+              Принять предложение
             </Button>
           )}
           <Button
@@ -303,7 +311,7 @@ export function AcceptOffer({
               }
               if (offer && version && offerDeadline(offer) > Date.now()) {
                 submitting.current = true
-                sign.mutate({ kind: 'sign', version, offer })
+                sign.mutate({ kind: 'accept', version, offer, generation: getSessionGeneration() })
               } else {
                 setNow(Date.now())
                 setReview({ version, confirm: false, updated: false })
@@ -313,12 +321,12 @@ export function AcceptOffer({
             {sign.isPending
               ? 'Подтверждаем условия…'
               : confirm
-                ? 'Подтвердить подписание'
-                : 'Перейти к подписанию'}
+                ? 'Принять предложение'
+                : 'Принять условия'}
           </Button>
           <p id={`${id}-action-hint`} className={styles.actionHint}>
             {confirm
-              ? 'Вы подтвердите условия предложения. После этого ожидайте подтверждения выдачи'
+              ? 'После принятия предложения вы отдельно подпишете два документа'
               : 'На следующем шаге вы проверите и подтвердите условия'}
           </p>
           <Button
@@ -372,7 +380,7 @@ export function AcceptOffer({
                 : expired
                   ? 'Срок предложения истёк'
                   : application.status !== 'OFFER_READY'
-                    ? 'Подписание недоступно'
+                    ? 'Принятие недоступно'
                     : 'Ждёт вашего решения'}
             </span>
             <h2 className={styles.title} tabIndex={-1} ref={focusHeading}>
@@ -380,7 +388,9 @@ export function AcceptOffer({
             </h2>
             {accepted ? (
               <p role="status">
-                Ожидаем подтверждения выдачи. Деньги ещё не зачислены
+                {application.status === 'ACCEPTED'
+                  ? 'Оформление завершено. Результат подписания доступен в документах.'
+                  : 'Следующий этап: проверьте и подпишите два документа. Принятие условий не заменяет подпись.'}
               </p>
             ) : (
               <p>Цель: {getApplicationPurposeLabel(application.purpose)}</p>
@@ -394,8 +404,8 @@ export function AcceptOffer({
           {sign.error && (
             <p className={styles.notice} role="alert">
               {unknown
-                ? 'Не удалось проверить результат подписания. '
-                : 'Не удалось обновить условия. Подписание не отправлено. '}
+                ? 'Не удалось проверить принятие предложения. '
+                : 'Не удалось принять предложение. '}
               {sign.error.message}
             </p>
           )}
@@ -504,7 +514,7 @@ export function AcceptOffer({
           )}
           {expired && !accepted && (
             <p role="status">
-              Условия можно прочитать, но подписание недоступно.
+              Условия можно прочитать, но принятие предложения недоступно.
             </p>
           )}
           <p className={styles.metadata}>

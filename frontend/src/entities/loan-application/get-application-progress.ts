@@ -16,7 +16,7 @@ export interface ApplicationProgressStage {
   state: 'DONE' | 'CURRENT' | 'PENDING'
 }
 
-/** Maps current statuses to six UI stages without inferring loan issuance. */
+/** Completes the six-step demo flow after signing without changing loan balances. */
 export function getApplicationProgress(
   status: Application['status'],
 ): ApplicationProgressStage[] {
@@ -30,11 +30,11 @@ export function getApplicationProgress(
   const currentIndex = stages.findIndex(
     (stage) => stage.code === currentCode[status],
   )
-  // OFFER_READY awaits client choice; ACCEPTED confirms signing, not issuance.
+  // OFFER_READY awaits client choice; ACCEPTED finishes the displayed workflow.
   return stages.map((stage, index) => ({
     ...stage,
     state:
-      index < currentIndex
+      status === 'ACCEPTED' || index < currentIndex
         ? 'DONE'
         : index === currentIndex
           ? 'CURRENT'
