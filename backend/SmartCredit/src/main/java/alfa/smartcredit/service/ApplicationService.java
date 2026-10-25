@@ -76,7 +76,8 @@ public class ApplicationService {
         a.setCompanyId(companyId);
         a.setAmount(s1.amount());
         a.setTermDays(s1.termDays());
-        a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));
+        a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));   // legacy: срок транша
+        a.setContractTermMonths(s1.contractTermMonths());                   // срок договора: 6/12/24
         a.setRate(r.rate());
         a.setPurpose(s1.purpose());
         a.setBusinessTask(s1.businessTask());
@@ -92,7 +93,7 @@ public class ApplicationService {
         a.setScoringData(mapper.valueToTree(r));
         a.setRecommendation(mapper.valueToTree(
                 new ApplicationView.Recommendation(rec.status(), rec.finalRate(), rec.amount(), rec.reason())));
-        a.setAiComment(aiCommentService.comment(r, rec, s1.amount(), s1.termDays()));
+        a.setAiComment(aiCommentService.comment(r, rec, s1.amount(), s1.termDays(), s1.contractTermMonths()));
 
         a.setStatus(ApplicationStatus.IN_REVIEW);
         a = applicationRepository.save(a);
@@ -160,6 +161,7 @@ public class ApplicationService {
         ApplicationView.Recommendation rec = a.getRecommendation() == null ? null
                 : mapper.treeToValue(a.getRecommendation(), ApplicationView.Recommendation.class);
 
+        int decidedContractTerm = contractTermOf(a);
         switch (req.action()) {
             case DECLINE -> a.setStatus(ApplicationStatus.DECLINED);
             case APPROVE -> {
@@ -167,19 +169,20 @@ public class ApplicationService {
                 int termDays = termDaysOf(a);
                 BigDecimal finalRate = req.finalRate() != null ? req.finalRate()
                         : rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
-                createOffer(a, a.getAmount(), termDays, finalRate);
+                createOffer(a, a.getAmount(), termDays, decidedContractTerm, finalRate);
                 a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
             case OFFER_ALTERNATIVE -> {
                 // что не передано менеджером, берём из рекомендации системы, иначе из заявки
                 int termDays = req.termDays() != null ? req.termDays() : termDaysOf(a);
+                if (req.contractTermMonths() != null) decidedContractTerm = req.contractTermMonths();
                 BigDecimal amount = req.amount() != null ? req.amount()
                         : rec != null && rec.amount() != null ? rec.amount()
                         : a.getAmount().min(a.getCalculatedLimit() != null ? a.getCalculatedLimit() : a.getAmount());
                 BigDecimal finalRate = req.finalRate() != null ? req.finalRate()
                         : rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
-                createOffer(a, amount, termDays, finalRate);
+                createOffer(a, amount, termDays, decidedContractTerm, finalRate);
                 a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
             }
@@ -195,9 +198,10 @@ public class ApplicationService {
                     "По заявке №%d принято решение об отказе. Комментарий банка: %s",
                     a.getId(), req.comment());
             case OFFER_READY -> String.format(
-                    "По заявке №%d одобрено предложение: %s под %s%% на %d дн. Подпишите его в личном кабинете.",
+                    "По заявке №%d одобрен лимит овердрафта %s на %d мес. Ставка для транша на %d дн.: %s%%. "
+                            + "Подпишите договор в личном кабинете, после этого можно брать транши на 30, 60 или 90 дней.",
                     a.getId(), money(a.getFinalRate() != null ? offerAmount(a.getId()) : a.getAmount()),
-                    pct(a.getFinalRate()), termDaysOf(a));
+                    decidedContractTerm, offerTermDays(a.getId(), termDaysOf(a)), pct(a.getFinalRate()));
             default -> null;
         };
         if (text != null) {
@@ -294,9 +298,20 @@ public class ApplicationService {
         o.setSignedByFullName(signer.getFullName());
         a.setStatus(ApplicationStatus.ACCEPTED);
 
+        // Договор начинает действовать с даты подписания и действует contractTermMonths месяцев
+        LocalDate contractStart = LocalDate.now();
+        if (o.getContractTermMonths() != null) {
+            o.setContractStart(contractStart);
+            o.setContractEnd(contractStart.plusMonths(o.getContractTermMonths()));
+        }
+
+        String signedText = o.getContractEnd() == null
+                ? String.format("Документы по заявке №%d подписаны. Кредит будет оформлен.", a.getId())
+                : String.format("Договор по заявке №%d подписан и действует до %s. Лимит %s: берите транши "
+                                + "на 30, 60 или 90 дней в личном кабинете.",
+                        a.getId(), o.getContractEnd(), money(o.getAmount()));
         eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
-                companyId, a.getId(), ApplicationStatus.ACCEPTED.name(),
-                String.format("Документы по заявке №%d подписаны. Кредит будет оформлен.", a.getId())));
+                companyId, a.getId(), ApplicationStatus.ACCEPTED.name(), signedText));
 
         return toDocumentsResponse(a, o);
     }
@@ -350,6 +365,15 @@ public class ApplicationService {
         return a.getTermMonths() * ProductRules.DAYS_IN_MONTH;   // старые демо-строки
     }
 
+    private int contractTermOf(CreditApplication a) {
+        return a.getContractTermMonths() != null ? a.getContractTermMonths() : 12;   // старые демо-строки
+    }
+
+    private int offerTermDays(Long applicationId, int fallback) {
+        return offerRepository.findFirstByApplicationIdOrderByIdDesc(applicationId)
+                .map(o -> o.getTermDays() != null ? o.getTermDays() : fallback).orElse(fallback);
+    }
+
     /** finalRate при ручном APPROVE (для MANUAL_REVIEW автоматом ставка не считается): rate + премия класса + отраслевая. */
     private BigDecimal manualFinalRate(CreditApplication a, int termDays) {
         Company c = companyRepository.findById(a.getCompanyId()).orElseThrow();
@@ -363,22 +387,32 @@ public class ApplicationService {
                 IndustryDirectory.byOkved(c.getOkved()).ratePremium());
     }
 
-    private void createOffer(CreditApplication a, BigDecimal amount, int termDays, BigDecimal finalRate) {
+    /**
+     * Оферта = будущий договор овердрафта: amount - лимит на весь срок договора, contractTermMonths - срок договора,
+     * termDays/finalRate - ориентир по одному траншу. Ставка каждого транша = базовая ставка на его срок + rateSpread.
+     */
+    private void createOffer(CreditApplication a, BigDecimal amount, int termDays, int contractTermMonths,
+                             BigDecimal finalRate) {
         if (finalRate == null)
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "FINAL_RATE_REQUIRED",
                     "Для этой заявки нет расчётной ставки. Укажите итоговую годовую ставку вручную, чтобы одобрить заявку или предложить другие условия.");
+        Company company = companyRepository.findById(a.getCompanyId())
+                .orElseThrow(() -> ApiException.notFound("Компания не найдена"));
+        BigDecimal baseForTerm = ProductRules.baseRate(company.getLegalForm(), a.getBusinessScale(), termDays);
+        if (baseForTerm == null) baseForTerm = a.getRate();
+
         Offer o = new Offer();
         o.setCompanyId(a.getCompanyId());
         o.setApplicationId(a.getId());
         o.setAmount(amount);
         o.setTermDays(termDays);
         o.setTermMonths(ProductRules.termMonthsRoundedUp(termDays));   // legacy-колонка NOT NULL
+        o.setContractTermMonths(contractTermMonths);
+        o.setRateSpread(baseForTerm == null ? BigDecimal.ZERO : finalRate.subtract(baseForTerm));
         o.setRatePercent(finalRate);
         o.setMonthlyPayment(scoringService.monthlyPayment(amount, finalRate, termDays));
         o.setValidUntil(LocalDate.now().plusDays(14));
         o.setStatus(OfferStatus.ACTIVE);
-        Company company = companyRepository.findById(a.getCompanyId())
-                .orElseThrow(() -> ApiException.notFound("Компания не найдена"));
         o.setDocuments(mapper.valueToTree(documentService.buildDocuments(company, a, o)));
         o.setDocumentVersion("1");
         offerRepository.save(o);
@@ -389,7 +423,9 @@ public class ApplicationService {
         ApplicationView.OfferView offer = offerRepository.findFirstByApplicationIdOrderByIdDesc(a.getId())
                 .map(o -> new ApplicationView.OfferView(o.getId(), o.getAmount(),
                         o.getTermDays() != null ? o.getTermDays() : o.getTermMonths() * ProductRules.DAYS_IN_MONTH,
-                        o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil(), o.getStatus().name()))
+                        o.getContractTermMonths(),
+                        o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil(), o.getStatus().name(),
+                        o.getContractStart(), o.getContractEnd()))
                 .orElse(null);
 
         ScoringService.Result scoring = a.getScoringData() == null ? null
@@ -414,7 +450,7 @@ public class ApplicationService {
         }
 
         return new ApplicationView(a.getId(), c.getName(), c.getInn(), c.getLegalForm(),
-                a.getAmount(), termDaysOf(a), a.getRate(), a.getPurpose(), a.getBusinessTask(),
+                a.getAmount(), termDaysOf(a), contractTermOf(a), a.getRate(), a.getPurpose(), a.getBusinessTask(),
                 a.getStatus().name(), a.getDecision() == null ? null : a.getDecision().name(), a.getFinalRate(),
                 a.getRiskScore(), a.getRiskClass(), forBank ? a.getAiComment() : null, a.getOfficerComment(),
                 a.getCreatedAt(), scoring, recommendation, offer, companyAge);
@@ -444,6 +480,6 @@ public class ApplicationService {
                 // Если не удалось распарсить, работаем без данных скоринга
             }
         }
-        return aiCommentService.commentForOfficer(r, a.getAmount(), a.getTermDays(), req);
+        return aiCommentService.commentForOfficer(r, a.getAmount(), a.getTermDays(), a.getContractTermMonths(), req);
     }
 }

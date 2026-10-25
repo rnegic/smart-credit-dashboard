@@ -63,6 +63,7 @@ public class ScoringService {
 
         return s1.amount() != null && s1.amount().compareTo(ProductRules.MIN_AMOUNT) >= 0
                 && s1.termDays() != null && ProductRules.TERM_DAYS.contains(s1.termDays())
+                && s1.contractTermMonths() != null && ProductRules.CONTRACT_TERM_MONTHS.contains(s1.contractTermMonths())
                 && fin.monthlyRevenue() != null && fin.monthlyRevenue().signum() > 0
                 && fin.existingDebt() != null && oooComplete;
     }

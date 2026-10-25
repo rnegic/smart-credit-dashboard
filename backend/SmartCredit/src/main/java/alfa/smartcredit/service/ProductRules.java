@@ -11,6 +11,15 @@ public final class ProductRules {
     public static final BigDecimal MIN_AMOUNT = new BigDecimal("50000");
     public static final BigDecimal ABSOLUTE_MAX_AMOUNT = new BigDecimal("20000000");
     public static final Set<Integer> TERM_DAYS = Set.of(30, 60, 90);
+    /** Срок договора овердрафта (рамочного договора), месяцев. Внутри договора клиент берёт транши на 30/60/90 дней. */
+    public static final Set<Integer> CONTRACT_TERM_MONTHS = Set.of(6, 12, 24);
+    /** Минимальная сумма одного транша, ₽ (транш может быть на любую сумму в пределах доступного лимита). */
+    public static final BigDecimal MIN_TRANCHE_AMOUNT = new BigDecimal("1000");
+    /**
+     * false: лимит договора расходуется нарастающим итогом (лимит 500 000 = максимум 5 траншей по 100 000,
+     * погашение лимит НЕ возвращает). true: лимит возобновляется после погашения (учитываются только открытые транши).
+     */
+    public static final boolean LIMIT_REVOLVING = false;
     public static final int DAYS_IN_YEAR = 365;
     public static final int DAYS_IN_MONTH = 30;
 

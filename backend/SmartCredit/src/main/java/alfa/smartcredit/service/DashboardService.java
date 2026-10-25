@@ -1,5 +1,6 @@
 package alfa.smartcredit.service;
 
+import alfa.smartcredit.dto.ContractView;
 import alfa.smartcredit.dto.DashboardResponse;
 import alfa.smartcredit.exception.ApiException;
 import alfa.smartcredit.model.Company;
@@ -29,6 +30,7 @@ public class DashboardService {
     private final PaymentRepository paymentRepository;
     private final NotificationRepository notificationRepository;
     private final ExternalDataService externalDataService;
+    private final ContractService contractService;
 
     @Transactional(readOnly = true)
     public DashboardResponse build(Long companyId) {
@@ -41,6 +43,7 @@ public class DashboardService {
         List<DashboardResponse.OfferDto> offers = offerRepository
                 .findByCompanyIdAndStatus(companyId, OfferStatus.ACTIVE).stream()
                 .map(o -> new DashboardResponse.OfferDto(o.getId(), o.getAmount(), termDays(o.getTermDays(), o.getTermMonths()),
+                        o.getContractTermMonths(),
                         o.getRatePercent(), o.getMonthlyPayment(), o.getValidUntil()))
                 .toList();
 
@@ -49,6 +52,7 @@ public class DashboardService {
                 .findFirstByLoanIdAndStatusOrderByDueDateAsc(loan.getId(), PaymentStatus.PENDING).orElse(null);
 
         ExternalDataService.ExternalData demo = externalDataService.fetch(company);
+        ContractView contract = contractService.findActive(companyId);
 
         return new DashboardResponse(
                 new DashboardResponse.CompanyDto(company.getId(), company.getName(),
@@ -57,14 +61,16 @@ public class DashboardService {
                                 demo.inquiries12m(), demo.revenueTrend(), demo.companyAgeYears())),
                 app == null ? null : new DashboardResponse.ApplicationDto(
                         app.getId(), app.getAmount(), termDays(app.getTermDays(), app.getTermMonths()),
+                        app.getContractTermMonths(),
                         app.getRate(), app.getPurpose(), app.getStatus().name(),
                         app.getDecision() == null ? null : app.getDecision().name(),
                         app.getFinalRate(), app.getBusinessScale() != null ? app.getBusinessScale().name() : null,
                         app.getCreatedAt()
                 ),
                 buildStages(app),
-                buildActions(app),
+                buildActions(app, contract),
                 offers,
+                contract,
                 loan == null ? null : new DashboardResponse.LoanDto(loan.getId(), loan.getPrincipal(),
                         loan.getRatePercent(), loan.getTermMonths(), loan.getMonthlyPayment(),
                         loan.getRemainingBalance(), loan.getStartDate()),
@@ -101,17 +107,23 @@ public class DashboardService {
         return result;
     }
 
-    private List<DashboardResponse.ActionDto> buildActions(CreditApplication app) {
+    private List<DashboardResponse.ActionDto> buildActions(CreditApplication app, ContractView contract) {
+        List<DashboardResponse.ActionDto> actions = new ArrayList<>();
         if (app == null) {
-            return List.of(new DashboardResponse.ActionDto("CREATE_APPLICATION", "Подать заявку на кредит"));
+            actions.add(new DashboardResponse.ActionDto("CREATE_APPLICATION", "Подать заявку на кредит"));
+        } else if (app.getStatus() == ApplicationStatus.OFFER_READY) {
+            actions.add(new DashboardResponse.ActionDto("ACCEPT_OFFER", "Принять условия предложения"));
+        } else if (app.getStatus() == ApplicationStatus.SIGNATURE_PENDING) {
+            actions.add(new DashboardResponse.ActionDto("SIGN_DOCUMENTS", "Подписать документы"));
         }
-        if (app.getStatus() == ApplicationStatus.OFFER_READY) {
-            return List.of(new DashboardResponse.ActionDto("ACCEPT_OFFER", "Принять условия предложения"));
+        // Действующий договор: можно брать транши, пока есть лимит и нет просрочки
+        if (contract != null) {
+            if (contract.canIssueTranche())
+                actions.add(new DashboardResponse.ActionDto("ISSUE_TRANCHE", "Получить овердрафт"));
+            else if ("HAS_OVERDUE_TRANCHE".equals(contract.issueBlockedReason()))
+                actions.add(new DashboardResponse.ActionDto("REPAY_TRANCHE", "Погасить просроченный транш"));
         }
-        if (app.getStatus() == ApplicationStatus.SIGNATURE_PENDING) {
-            return List.of(new DashboardResponse.ActionDto("SIGN_DOCUMENTS", "Подписать документы"));
-        }
-        return List.of();
+        return actions;
     }
 
 }

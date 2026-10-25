@@ -47,7 +47,7 @@ public final class DemoScenarioCatalog {
                                 "Дмитрий", "Кузнецов", "Олегович", "312774600123456", null, null,
                                 "+79991110011", "kuznetsov@example.com", "г. Москва, ул. Тверская, д. 12, оф. 4",
                                 "Закупка лицензий ПО и серверного оборудования для разработки",
-                                "500000", 60, "Оборотные средства",
+                                "500000", 60, 12, "Оборотные средства",
                                 "1000000", "10000", "0", "12000000", 4,
                                 new ExternalDataOverride(800, 0, 1, RevenueTrend.GROWING, 5))),
 
@@ -62,7 +62,7 @@ public final class DemoScenarioCatalog {
                                 null, null, null, null, "1127746123456", "770801001",
                                 "+79991110012", "morozova@stroyresurs.example", "г. Москва, ул. Строителей, д. 7",
                                 "Закупка материалов под крупный строительный объект",
-                                "15000000", 90, "Оборотные средства",
+                                "15000000", 90, 12, "Оборотные средства",
                                 "10000000", "100000", "50000", "120000000", 30,
                                 new ExternalDataOverride(700, 0, 1, RevenueTrend.GROWING, 3))),
 
@@ -77,7 +77,7 @@ public final class DemoScenarioCatalog {
                                 "Анна", "Белова", "Сергеевна", "320502700045678", null, null,
                                 "+79991110013", "belova@example.com", "г. Москва, ул. Лесная, д. 3, кв. 15",
                                 "Пополнение оборотных средств интернет-магазина",
-                                "100000", 30, "Оборотные средства",
+                                "100000", 30, 6, "Оборотные средства",
                                 "200000", "20000", "0", "2400000", 1,
                                 new ExternalDataOverride(500, 1, 4, RevenueTrend.DECLINING, 0))),
 
@@ -94,7 +94,7 @@ public final class DemoScenarioCatalog {
                                 null, null, null, null, "1267700456789", "774301001",
                                 "+79991110014", "lebedev@novasoft.example", "г. Москва, Ленинградский пр-т, д. 39",
                                 "Расширение команды разработки и аренда офиса",
-                                "500000", 60, "Оборотные средства",
+                                "500000", 60, 24, "Оборотные средства",
                                 "1000000", "0", "0", "12000000", 5,
                                 new ExternalDataOverride(800, 0, 1, RevenueTrend.GROWING, 0))));
     }
@@ -103,7 +103,7 @@ public final class DemoScenarioCatalog {
             String legalForm, String companyName, String inn, String okved, String taxSystem, String industry,
             String firstName, String lastName, String middleName, String ogrnip, String ogrn, String kpp,
             String phone, String email, String address,
-            String businessTask, String amount, int termDays, String purpose,
+            String businessTask, String amount, int termDays, int contractTermMonths, String purpose,
             String monthlyRevenue, String debt, String other, String annualRevenue, Integer employees,
             ExternalDataOverride ext) {
         var applicant = new Applicant(legalForm, companyName, inn, taxSystem,
@@ -113,7 +113,7 @@ public final class DemoScenarioCatalog {
                 new BigDecimal(annualRevenue), employees, new BigDecimal(other));
         boolean ip = "IP".equals(legalForm);
         return new ApplicationFormDto(null, Instant.now(), "SUBMITTED",
-                new Step1(businessTask, new BigDecimal(amount), termDays, null, purpose),
+                new Step1(businessTask, new BigDecimal(amount), termDays, contractTermMonths, null, purpose),
                 new Step2(applicant, financials, ext),
                 new Prefilled(ip ? "EGRIP_MOCK" : "EGRUL_MOCK", Instant.now(), true),
                 new Step3(new Consents(true, true, true, Instant.now())),

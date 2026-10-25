@@ -37,6 +37,8 @@ public class CreditApplication {
     @Column(name = "business_task") private String businessTask;
 
     @Column(name = "term_days") private Integer termDays;
+    /** Срок договора овердрафта, месяцев: 6, 12 или 24 (term_months/term_days - это срок транша). */
+    @Column(name = "contract_term_months") private Integer contractTermMonths;
     private BigDecimal rate;
     @Column(name = "final_rate") private BigDecimal finalRate;
     @Enumerated(EnumType.STRING) private DecisionStatus decision;

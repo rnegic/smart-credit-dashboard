@@ -101,6 +101,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         a.setAmount(s1.amount());
         a.setTermDays(s1.termDays());
         a.setTermMonths(ProductRules.termMonthsRoundedUp(s1.termDays()));
+        a.setContractTermMonths(s1.contractTermMonths());
         a.setRate(r.rate());
         a.setPurpose(s1.purpose());
         a.setBusinessTask(s1.businessTask());
@@ -143,6 +144,9 @@ public class DemoDataSeeder implements ApplicationRunner {
                 o.setAmount(a.getAmount());
                 o.setTermDays(a.getTermDays());
                 o.setTermMonths(ProductRules.termMonthsRoundedUp(a.getTermDays()));
+                o.setContractTermMonths(a.getContractTermMonths());
+                BigDecimal baseForTerm = ProductRules.baseRate(c.getLegalForm(), a.getBusinessScale(), a.getTermDays());
+                o.setRateSpread(baseForTerm == null ? BigDecimal.ZERO : finalRate.subtract(baseForTerm));
                 o.setRatePercent(finalRate);
                 o.setMonthlyPayment(scoringService.monthlyPayment(a.getAmount(), finalRate, a.getTermDays()));
                 o.setValidUntil(LocalDate.now().plusDays(90));
@@ -152,8 +156,9 @@ public class DemoDataSeeder implements ApplicationRunner {
                 offerRepository.save(o);
 
                 notify(c.getId(), String.format(
-                        "По заявке №%d одобрено предложение: %s под %s%% на %d дн. Подпишите его в личном кабинете.",
-                        a.getId(), money(a.getAmount()), pct(finalRate), a.getTermDays()),
+                        "По заявке №%d одобрен лимит овердрафта %s на %d мес. Ставка для транша на %d дн.: %s%%. "
+                                + "Подпишите договор в личном кабинете, после этого можно брать транши на 30, 60 или 90 дней.",
+                        a.getId(), money(a.getAmount()), a.getContractTermMonths(), a.getTermDays(), pct(finalRate)),
                         false, created.plus(3, ChronoUnit.HOURS));
             }
             case DECLINED -> {

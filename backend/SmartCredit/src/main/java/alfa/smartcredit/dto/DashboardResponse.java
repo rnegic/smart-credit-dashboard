@@ -20,6 +20,8 @@ public record DashboardResponse(
         List<ActionDto> requiredActions,
         @Schema(description = "Доступные оферты")
         List<OfferDto> offers,
+        @Schema(description = "Действующий договор овердрафта с лимитом и траншами; null, если подписанного договора нет")
+        ContractView activeContract,
         @Schema(description = "Действующий кредит; null, если кредита нет")
         LoanDto activeLoan,
         @Schema(description = "Ближайший платёж; null, если платежей нет")
@@ -60,10 +62,12 @@ public record DashboardResponse(
     public record ApplicationDto(
             @Schema(description = "Идентификатор заявки", example = "1")
             Long id,
-            @Schema(description = "Сумма, ₽", example = "500000")
+            @Schema(description = "Запрошенный лимит договора, ₽", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Срок в днях", example = "60")
+            @Schema(description = "Ориентировочный срок транша в днях", example = "60")
             Integer termDays,
+            @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
+            Integer contractTermMonths,
             @Schema(description = "Ставка, %", example = "18.5")
             BigDecimal rate,
             @Schema(description = "Цель кредита", example = "Оборотные средства")
@@ -100,11 +104,13 @@ public record DashboardResponse(
     public record OfferDto(
             @Schema(description = "Идентификатор оферты", example = "1")
             Long id,
-            @Schema(description = "Сумма, ₽", example = "500000")
+            @Schema(description = "Лимит договора, ₽", example = "500000")
             BigDecimal amount,
-            @Schema(description = "Срок в днях", example = "60")
+            @Schema(description = "Ориентировочный срок транша в днях", example = "60")
             Integer termDays,
-            @Schema(description = "Ставка, %", example = "18.5")
+            @Schema(description = "Срок договора овердрафта в месяцах: 6, 12 или 24", example = "12")
+            Integer contractTermMonths,
+            @Schema(description = "Ставка для ориентировочного срока транша, %", example = "18.5")
             BigDecimal finalRate,
             @Schema(description = "Ежемесячный платёж, ₽", example = "84917.32")
             BigDecimal monthlyPayment,

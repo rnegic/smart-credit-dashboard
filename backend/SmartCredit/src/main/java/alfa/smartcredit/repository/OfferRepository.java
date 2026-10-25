@@ -18,5 +18,6 @@ public interface OfferRepository extends JpaRepository<Offer, Long> {
     Optional<Offer> findForUpdate(@Param("id") Long id);
 
     List<Offer> findByCompanyIdAndStatus(Long companyId, OfferStatus status);
+    List<Offer> findByCompanyIdOrderByIdDesc(Long companyId);
     Optional<Offer> findFirstByApplicationIdOrderByIdDesc(Long applicationId);
 }

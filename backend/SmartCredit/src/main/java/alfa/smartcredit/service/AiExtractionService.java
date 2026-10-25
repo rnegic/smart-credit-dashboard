@@ -23,7 +23,7 @@ import java.util.Set;
 @Slf4j
 public class AiExtractionService {
 
-    public record Extracted(String businessTask, BigDecimal amount, Integer termDays, String purpose,
+    public record Extracted(String businessTask, BigDecimal amount, Integer termDays, Integer contractTermMonths, String purpose,
                             BigDecimal monthlyRevenue, BigDecimal existingDebt,
                             String industry, String taxSystem) {}
 
@@ -36,6 +36,9 @@ public class AiExtractionService {
             - amount: от 50000 до 20000000, иначе null.
             - termDays: срок транша в днях, допустимы только 30, 60 или 90 (\"месяц\" = 30, \"2 месяца\" = 60, \"3 месяца\" = 90).
               Если срок не указан или не равен одному из этих значений, верни null.
+            - contractTermMonths: срок договора овердрафта в месяцах, допустимы только 6, 12 или 24
+              ("полгода" = 6, "год" = 12, "два года" = 24). Если срок договора не указан или иной, верни null.
+              Не путай со сроком транша (termDays).
             - businessTask: одна фраза, что нужно сделать на деньги (до 200 символов).
             - purpose: одно из "Оборотные средства", "Оборудование", "Ремонт", "Недвижимость", "Другое".
             - monthlyRevenue: выручка в месяц. Если дана годовая, раздели на 12.
@@ -43,7 +46,7 @@ public class AiExtractionService {
             - industry: отрасль одним словом (например "IT", "Торговля", "Производство").
             - taxSystem: одно из "USN", "OSNO", "PSN", "AUSN" (УСН, ОСНО, патент, АУСН).
             Верни только JSON-объект без Markdown с ключами businessTask, amount, termDays,
-            purpose, monthlyRevenue, existingDebt, industry, taxSystem.
+            contractTermMonths, purpose, monthlyRevenue, existingDebt, industry, taxSystem.
             Все ключи обязательны, неизвестные значения должны быть null.
             """;
 
@@ -76,6 +79,7 @@ public class AiExtractionService {
         props.put("businessTask", nullable("string"));
         props.put("amount", nullable("number"));
         props.put("termDays", nullable("integer"));
+        props.put("contractTermMonths", nullable("integer"));
         props.put("purpose", nullable("string"));
         props.put("monthlyRevenue", nullable("number"));
         props.put("existingDebt", nullable("number"));
@@ -133,6 +137,7 @@ public class AiExtractionService {
                 str(n, "businessTask", 500),
                 num(n, "amount", 50_000, 20_000_000),
                 termDays(n),
+                contractTermMonths(n),
                 str(n, "purpose", 100),
                 num(n, "monthlyRevenue", 1),
                 num(n, "existingDebt", 0),
@@ -153,6 +158,11 @@ public class AiExtractionService {
     private Integer termDays(JsonNode n) {
         Integer v = integer(n, "termDays", 1, 3650);
         return v != null && ProductRules.TERM_DAYS.contains(v) ? v : null;
+    }
+    /** Срок договора: только 6, 12 или 24 месяца. */
+    private Integer contractTermMonths(JsonNode n) {
+        Integer v = integer(n, "contractTermMonths", 1, 120);
+        return v != null && ProductRules.CONTRACT_TERM_MONTHS.contains(v) ? v : null;
     }
     private Integer integer(JsonNode n, String f, int min, int max) {
         JsonNode v = n.path(f);
