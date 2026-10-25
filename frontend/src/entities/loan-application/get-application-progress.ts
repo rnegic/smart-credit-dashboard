@@ -6,7 +6,7 @@ const stages = [
   { code: 'DECISION', title: 'Статус' },
   { code: 'OFFER', title: 'Предложение' },
   { code: 'SIGNING', title: 'Подписание' },
-  { code: 'ISSUED', title: 'Выдача' },
+  { code: 'ISSUED', title: 'Получение траншей' },
 ] as const
 
 /** A product stage derived from the application's actual status. */

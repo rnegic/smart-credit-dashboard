@@ -143,6 +143,7 @@ export function ApplicationOverview({
     !providedApplication &&
     !detailsOpen &&
     !documentsOpen &&
+    !dashboard.data?.activeContract &&
     loan != null &&
     (paymentIsUrgent || !hasPendingApplication)
   const offerIsValid =
@@ -353,8 +354,9 @@ export function ApplicationOverview({
       title:
         application.decision === 'ALTERNATIVE_OFFER' ||
         (offer &&
-          (offer.amount !== application.amount ||
-            offer.termDays !== application.termDays))
+           (offer.amount !== application.amount ||
+            offer.contractTermMonths !== application.contractTermMonths ||
+             offer.termDays !== application.termDays))
           ? 'Банк предложил другие условия'
           : 'Банк подготовил предложение',
       description: canAcceptOffer
@@ -372,8 +374,8 @@ export function ApplicationOverview({
             : 'Комментарий кредитного специалиста пока не указан.',
     },
     ACCEPTED: {
-      title: documentsSigned ? 'Документы подписаны' : 'Условия приняты',
-      description: 'Оформление завершено.',
+      title: 'Договор подписан',
+      description: 'Оформление завершено. Теперь можно получать транши в пределах доступного лимита договора.',
     },
     SIGNATURE_PENDING: {
       title: 'Осталась ваша подпись',
@@ -408,7 +410,7 @@ export function ApplicationOverview({
   const applicationDetails = (
     <div className={styles.details}>
       <Typography.TitleResponsive tag="h2" view="medium" font="system">
-        Запрошено: {formatMoney(application.amount)}
+        Запрошенный лимит: {formatMoney(application.amount)}
       </Typography.TitleResponsive>
       {!offerExperience && officerCommentNotice}
       <dl className={styles.parameters}>
@@ -425,7 +427,11 @@ export function ApplicationOverview({
           <dd>{getApplicationPurposeLabel(application.purpose)}</dd>
         </div>
         <div>
-          <dt>Запрошенный срок</dt>
+          <dt>Срок договора</dt>
+          <dd>{application.contractTermMonths == null ? 'Не указан' : `${application.contractTermMonths} мес.`}</dd>
+        </div>
+        <div>
+          <dt>Ориентировочный срок транша</dt>
           <dd>{application.termDays} дней</dd>
         </div>
         <div>
@@ -611,14 +617,19 @@ export function ApplicationOverview({
               <>
                 <Typography.Text tag="p" color="secondary">
                   {documentsSigned
-                    ? 'Оформление завершено. Договор и индивидуальные условия доступны в разделе «Документы».'
+                    ? 'Договор подписан. Получайте транши в пределах лимита. Договор и индивидуальные условия доступны в разделе «Документы».'
                     : signingStage
                       ? 'Предложение принято. Проверьте документы и поставьте подпись, не покидая кабинет.'
                       : 'Просмотрите сохранённые документы и данные подписания.'}
                 </Typography.Text>
                 {offer && (
                   <Typography.Text tag="p" view="primary-small">
-                    {formatMoney(offer.amount, { exact: true })} · {offer.termDays} дней · {String(offer.finalRate).replace('.', ',')}% годовых
+                    Лимит {formatMoney(offer.amount, { exact: true })} · {offer.contractTermMonths == null ? 'Срок договора не указан' : `Договор ${offer.contractTermMonths} мес.`}
+                  </Typography.Text>
+                )}
+                {offer?.contractStart && offer.contractEnd && (
+                  <Typography.Text tag="p" view="primary-small" color="secondary">
+                    С {formatDate(offer.contractStart)} до {formatDate(offer.contractEnd)}
                   </Typography.Text>
                 )}
               </>
@@ -635,7 +646,7 @@ export function ApplicationOverview({
                   </time>
                 </Typography.Text>
                 <Typography.Text tag="p" color="secondary">
-                  Запрошенный срок: {application.termDays} дней
+                  Срок договора: {application.contractTermMonths == null ? 'не указан' : `${application.contractTermMonths} мес.`} · Ориентировочный срок транша: {application.termDays} дней
                   {application.purpose &&
                     ` · ${getApplicationPurposeLabel(application.purpose)}`}
                 </Typography.Text>
@@ -674,7 +685,7 @@ export function ApplicationOverview({
             <div className={styles.offerSummary}>
               {offer && (
                 <dl className={styles.offerAmount}>
-                  <dt>Банк предлагает</dt>
+                  <dt>Лимит договора от банка</dt>
                   <dd>{formatMoney(offer.amount, { exact: true })}</dd>
                 </dl>
               )}
@@ -683,16 +694,13 @@ export function ApplicationOverview({
               )}
               {offer && (
                 <Typography.Text tag="p" color="secondary">
-                  {offer.amount !== application.amount &&
+                  {offer.amount !== application.amount ||
+                  offer.contractTermMonths !== application.contractTermMonths ||
                   offer.termDays !== application.termDays
-                    ? 'Сумма и срок отличаются от заявки. Сравнение доступно в предложении.'
-                    : offer.amount !== application.amount
-                      ? 'Сумма отличается от заявки. Сравнение доступно в предложении.'
-                      : offer.termDays !== application.termDays
-                        ? 'Срок отличается от заявки. Сравнение доступно в предложении.'
-                        : application.decision === 'ALTERNATIVE_OFFER'
-                          ? 'Банк предложил другие условия. Сумма и срок сохранены.'
-                          : 'Сумма и срок соответствуют заявке'}
+                    ? 'Лимит или сроки отличаются от заявки. Сравнение доступно в предложении.'
+                    : application.decision === 'ALTERNATIVE_OFFER'
+                      ? 'Банк предложил другие условия. Лимит и сроки сохранены.'
+                      : 'Лимит и сроки соответствуют заявке'}
                 </Typography.Text>
               )}
               {offerState && (
@@ -794,6 +802,13 @@ export function ApplicationOverview({
                 </Typography.Text>
               </div>
             </div>
+          )}
+          {application.status === 'ACCEPTED' && (
+            <Button view="secondary" size={48} onClick={() => {
+              const contract = dashboard.data?.activeContract
+              void navigate(contract?.applicationId === application.id
+                ? ROUTES.contract(String(contract.id)) : ROUTES.credits)
+            }}>Договор и транши</Button>
           )}
           <Button
             view="primary"

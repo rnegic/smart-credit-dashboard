@@ -1,7 +1,7 @@
 import { Typography } from '@alfalab/core-components/typography'
 import { ApplicationList } from '@/widgets/application-overview'
 import { ApplicationDocuments } from '@/widgets/application-documents'
-import { CreditSummary } from '@/widgets/credit-summary'
+import { ContractOverview } from '@/widgets/contract-overview'
 import styles from './CabinetSections.module.scss'
 
 export function ApplicationsPage() {
@@ -35,13 +35,13 @@ export function CreditsPage() {
           font="system"
           weight="bold"
         >
-          Кредиты и лимиты
+          Договор и овердрафты
         </Typography.TitleResponsive>
         <Typography.Text tag="p" color="secondary">
-          Обязательства бизнеса и предстоящие платежи.
+          Лимит договора, получение траншей и погашение овердрафтов.
         </Typography.Text>
       </header>
-      <CreditSummary />
+      <ContractOverview />
     </main>
   )
 }

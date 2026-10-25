@@ -42,7 +42,7 @@ function DocumentPackage({ application }: { application: ApplicationView }) {
             </Typography.TitleResponsive>
             {offer && (
               <Typography.Text view="primary-small" color="secondary">
-                {formatMoney(offer.amount, { exact: true })} · {offer.termDays} дней · {String(offer.finalRate).replace('.', ',')}% годовых
+                Лимит {formatMoney(offer.amount, { exact: true })} · Срок договора {offer.contractTermMonths == null ? 'не указан' : `${offer.contractTermMonths} мес.`}
               </Typography.Text>
             )}
           </div>
