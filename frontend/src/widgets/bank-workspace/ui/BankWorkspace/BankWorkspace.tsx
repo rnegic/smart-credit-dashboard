@@ -591,7 +591,7 @@ export function BankWorkspace() {
                     </dd>
                   </div>
                   <div>
-                    <dt>Сумма</dt>
+                    <dt>Запрошенный лимит договора</dt>
                     <dd>{formatMoney(application.amount)}</dd>
                   </div>
                   {isOoo && (
@@ -615,11 +615,15 @@ export function BankWorkspace() {
                     </>
                   )}
                   <div>
-                    <dt>Срок</dt>
+                    <dt>Запрошенный срок договора</dt>
+                    <dd>{application.contractTermMonths} мес.</dd>
+                  </div>
+                  <div>
+                    <dt>Ориентировочный срок транша</dt>
                     <dd>{application.termDays} дней</dd>
                   </div>
                   <div>
-                    <dt>Базовая годовая ставка</dt>
+                    <dt>Базовая годовая ставка для ориентировочного транша</dt>
                     <dd>
                       {application.rate == null
                         ? 'Не указана'
@@ -627,7 +631,7 @@ export function BankWorkspace() {
                     </dd>
                   </div>
                   <div>
-                    <dt>Сохранённая итоговая годовая ставка</dt>
+                    <dt>Сохранённая годовая ставка для ориентировочного транша</dt>
                     <dd>
                       {finalRate == null ? 'Не определена' : `${finalRate}%`}
                     </dd>
@@ -676,7 +680,7 @@ export function BankWorkspace() {
                         </dd>
                       </div>
                       <div>
-                        <dt>Рекомендуемая сумма</dt>
+                        <dt>Рекомендуемый лимит договора</dt>
                         <dd>
                           {recommendation.amount === null
                             ? 'Не указана'
@@ -684,7 +688,7 @@ export function BankWorkspace() {
                         </dd>
                       </div>
                       <div>
-                        <dt>Рекомендуемая годовая ставка</dt>
+                        <dt>Рекомендуемая годовая ставка для транша</dt>
                         <dd>
                           {recommendation.finalRate === null
                             ? 'Не указана'
@@ -745,7 +749,7 @@ export function BankWorkspace() {
                         <dd>{scoring.amountToRevenue}</dd>
                       </div>
                       <div>
-                        <dt>Расчётный платёж по базовой ставке</dt>
+                        <dt>Пример платежа по базовой ставке</dt>
                         <dd>
                           {scoring.newMonthlyPayment == null
                             ? 'Нет расчёта'
@@ -761,7 +765,7 @@ export function BankWorkspace() {
                         </dd>
                       </div>
                       <div>
-                        <dt>Максимальная сумма продукта</dt>
+                        <dt>Максимальный лимит продукта</dt>
                         <dd>{formatMoney(scoring.absoluteMaxAmount)}</dd>
                       </div>
                       <div>
@@ -797,8 +801,10 @@ export function BankWorkspace() {
                   выполняются сервером по фиксированным правилам.
                   Окончательное решение принимает сотрудник.
                   Показатели скоринга относятся к исходной заявке и базовой
-                  ставке, а платёж предложения рассчитывается отдельно по
-                  итоговой ставке.
+                  ставке. Платёж показан только как пример, если взять весь
+                  лимит одним траншем на {application.termDays} дней.
+                  Пример платежа предложения рассчитывается отдельно по
+                  ставке для ориентировочного транша.
                 </p>
               </section>
 
@@ -942,26 +948,50 @@ export function BankWorkspace() {
                   <h3>Предложение по заявке</h3>
                   <dl className={styles.parameters}>
                     <div>
-                      <dt>Сумма</dt>
+                      <dt>Лимит договора</dt>
                       <dd>{formatMoney(application.offer.amount)}</dd>
                     </div>
                     <div>
-                      <dt>Срок</dt>
+                      <dt>Срок договора</dt>
+                      <dd>{application.offer.contractTermMonths === null
+                        ? 'Не указан'
+                        : `${application.offer.contractTermMonths} мес.`}</dd>
+                    </div>
+                    <div>
+                      <dt>Ориентировочный срок транша</dt>
                       <dd>{application.offer.termDays} дней</dd>
                     </div>
                     <div>
-                      <dt>Итоговая годовая ставка</dt>
+                      <dt>Годовая ставка для ориентировочного транша</dt>
                       <dd>{application.offer.finalRate}%</dd>
                     </div>
                     <div>
-                      <dt>Платёж в месяц</dt>
+                      <dt>Пример ежемесячного платежа</dt>
                       <dd>{formatMoney(application.offer.monthlyPayment)}</dd>
                     </div>
                     <div>
-                      <dt>Действует до</dt>
+                      <dt>Принять и подписать до</dt>
                       <dd>{formatDate(application.offer.validUntil)}</dd>
                     </div>
+                    {application.offer.contractStart !== null && (
+                      <div>
+                        <dt>Начало договора</dt>
+                        <dd>{formatDate(application.offer.contractStart)}</dd>
+                      </div>
+                    )}
+                    {application.offer.contractEnd !== null && (
+                      <div>
+                        <dt>Окончание договора</dt>
+                        <dd>{formatDate(application.offer.contractEnd)}</dd>
+                      </div>
+                    )}
                   </dl>
+                  <p className={styles.secondary}>
+                    Пример платежа рассчитан, если взять весь лимит одним
+                    траншем на {application.offer.termDays} дней. Срок и ставка
+                    каждого транша определяются отдельно.
+                    {application.status === 'ACCEPTED' && ' Договор подписан; это не означает выдачу денег. Транши оформляются отдельно.'}
+                  </p>
                 </section>
               )}
               {currentDecision && decision.isSuccess && (

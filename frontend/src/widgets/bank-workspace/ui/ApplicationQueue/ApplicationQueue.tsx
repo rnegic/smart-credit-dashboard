@@ -37,7 +37,7 @@ const filters = [
   { key: 'IN_REVIEW', label: 'На рассмотрении', Icon: ClockSIcon },
   { key: 'OFFER_READY', label: 'Предложение банка', Icon: DocumentLinesLineSIcon },
   { key: 'SIGNATURE_PENDING', label: 'На подписании', Icon: DocumentLinesLineSIcon },
-  { key: 'ACCEPTED', label: 'Принято', Icon: CheckmarkCircleSIcon },
+  { key: 'ACCEPTED', label: 'Договор подписан', Icon: CheckmarkCircleSIcon },
   { key: 'DECLINED', label: 'Отказ', Icon: CrossCircleSIcon },
 ] as const
 
@@ -45,8 +45,8 @@ const sortOptions: { key: QueueSort; content: string }[] = [
   { key: 'review', content: 'Сначала на рассмотрении' },
   { key: 'newest', content: 'Сначала новые' },
   { key: 'oldest', content: 'Сначала старые' },
-  { key: 'amount-desc', content: 'Сумма: по убыванию' },
-  { key: 'amount-asc', content: 'Сумма: по возрастанию' },
+  { key: 'amount-desc', content: 'Лимит: по убыванию' },
+  { key: 'amount-asc', content: 'Лимит: по возрастанию' },
   { key: 'company', content: 'Компания: А–Я' },
 ]
 
@@ -158,7 +158,7 @@ export function ApplicationQueue({
             <thead role="rowgroup">
               <tr role="row">
                 <th scope="col" className={styles.companyColumn}>Заявка / компания</th>
-                <th scope="col" className={styles.amountColumn}>Сумма / срок</th>
+                <th scope="col" className={styles.amountColumn}>Лимит / сроки</th>
                 <th scope="col" className={styles.statusColumn}>Статус заявки</th>
                 <th scope="col" className={styles.scoringColumn}>Рекомендация скоринга</th>
                 <th scope="col" className={styles.dateColumn}>Создана</th>
@@ -184,9 +184,10 @@ export function ApplicationQueue({
                     <span className={styles.secondary}>ИНН {application.inn}</span>
                   </td>
                   <td className={styles.amount} role="cell">
-                    <span className={styles.cellLabel}>Сумма / срок</span>
+                    <span className={styles.cellLabel}>Лимит / сроки</span>
                     <strong className={styles.money}>{formatMoney(application.amount)}</strong>
-                    <span className={styles.secondary}>{application.termDays} дней</span>
+                    <span className={styles.secondary}>Договор: {application.contractTermMonths} мес.</span>
+                    <span className={styles.secondary}>Ориентировочный транш: {application.termDays} дней</span>
                     <span className={styles.purpose} title={getApplicationPurposeLabel(application.purpose)}>
                       {getApplicationPurposeLabel(application.purpose)}
                     </span>
