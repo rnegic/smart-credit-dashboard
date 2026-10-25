@@ -64,7 +64,7 @@ public class DocumentService {
 
     private String buildOverdraftAgreement(CreditApplication app, Offer offer, Applicant ap) {
         StringBuilder sb = new StringBuilder();
-        sb.append("ДОГОВОР ОВЕРДРАФТА (демонстрационный текст)\n");
+        sb.append("ДОГОВОР ОВЕРДРАФТА\n");
         sb.append("========================================\n\n");
         sb.append("Заявка №").append(app.getId()).append("\n");
         sb.append("Заёмщик: ").append(ap.name()).append("\n");
@@ -86,7 +86,7 @@ public class DocumentService {
 
     private String buildIndividualTerms(CreditApplication app, Offer offer, Applicant ap) {
         StringBuilder sb = new StringBuilder();
-        sb.append("ИНДИВИДУАЛЬНЫЕ УСЛОВИЯ (демонстрационный текст)\n");
+        sb.append("ИНДИВИДУАЛЬНЫЕ УСЛОВИЯ\n");
         sb.append("=============================================\n\n");
         sb.append("Заявка №").append(app.getId()).append("\n");
         sb.append("Заёмщик: ").append(ap.name()).append("\n");
