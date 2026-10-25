@@ -23,4 +23,6 @@ public class User {
     @Column(name = "company_id") private Long companyId;
     private String phone;
     private String email;
+    /** Порядок в списке демо-профилей; null = в списке не показывать. */
+    @Column(name = "demo_order") private Integer demoOrder;
 }
