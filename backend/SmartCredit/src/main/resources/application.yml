@@ -13,6 +13,9 @@ spring:
       hibernate.type.json_format_mapper: org.hibernate.type.format.jackson.Jackson3JsonFormatMapper
   flyway:
     enabled: true
+    # Нужно для автоматического сброса демо-базы через DatabaseResetConfig.
+    clean-disabled: false
+    clean-on-validation-error: true
   jackson:
     default-property-inclusion: always
 server:
@@ -30,6 +33,10 @@ springdoc:
     persist-authorization: true
   paths-to-match: /api/**
 app:
+  demo:
+    # true — чистая БД с демо-сценариями при каждом запуске.
+    # Отключить можно переменной окружения APP_DEMO_RESET_DB_ON_STARTUP=false.
+    reset-db-on-startup: ${APP_DEMO_RESET_DB_ON_STARTUP:true}
   cors:
     allowed-origin: http://localhost:5173
   openai:

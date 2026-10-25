@@ -53,7 +53,7 @@ public final class DemoScenarioCatalog {
 
                 new Scenario(2, "demo_ooo_alternative", "Морозова Елена Викторовна",
                         "Сценарий 2 · ООО · ДРУГИЕ УСЛОВИЯ. Класс A, но долговая нагрузка выше 50%. "
-                                + "Заявка ждёт сотрудника банка: войдите как officer и предложите условия.",
+                                + "Заявка ждёт сотрудника банка: войдите как сотрудник банка и предложите условия.",
                         "+79991110012", "morozova@stroyresurs.example",
                         "ООО «СтройРесурс»", "7708123456", "41.20", "OOO",
                         DecisionStatus.ALTERNATIVE_OFFER, Stage.IN_REVIEW, null, 2,
@@ -68,7 +68,7 @@ public final class DemoScenarioCatalog {
 
                 new Scenario(3, "demo_ip_manual", "Белова Анна Сергеевна",
                         "Сценарий 3 · ИП · РУЧНАЯ ПРОВЕРКА. Пограничный случай: балл 42 (класс C), "
-                                + "просрочка, падающая выручка. Решение принимает сотрудник банка (вход: officer).",
+                                + "просрочка, падающая выручка. Решение принимает сотрудник банка.",
                         "+79991110013", "belova@example.com",
                         "ИП Белова Анна Сергеевна", "502745123876", "47.91", "IP",
                         DecisionStatus.MANUAL_REVIEW, Stage.IN_REVIEW, null, 1,
