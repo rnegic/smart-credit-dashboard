@@ -73,6 +73,7 @@ export function DecisionForm({
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
   const recommendedRate = application.recommendation?.finalRate
   const recommendedAmount = application.recommendation?.amount
+  const requiresManualRate = recommendedRate == null && application.rate == null
 
   function changeField(field: Exclude<Field, 'action'>, value: string) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -99,9 +100,10 @@ export function DecisionForm({
         values.termDays === '90'
       )
         body.termDays = Number(values.termDays) as 30 | 60 | 90
-      const rate = parseNumber(values.finalRate)
-      if (rate !== null && rate >= 0 && rate <= 100) body.finalRate = rate
     }
+    const rate = parseNumber(values.finalRate)
+    if (action !== 'DECLINE' && rate !== null && rate >= 0 && rate <= 100)
+      body.finalRate = rate
     return body
   }
 
@@ -121,6 +123,11 @@ export function DecisionForm({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (disabled || pending) return
+    if (action && action !== 'DECLINE' && requiresManualRate && !values.finalRate.trim()) {
+      setErrors({ finalRate: 'Укажите итоговую ставку: сервер не передал расчётную ставку для этой заявки' })
+      formRef.current?.querySelector<HTMLElement>('[name="finalRate"]')?.focus()
+      return
+    }
 
     const result = decisionSchema.safeParse({ action, ...values })
     if (!result.success) {
@@ -218,7 +225,7 @@ export function DecisionForm({
               <dt>Ставка при одобрении</dt>
               <dd>
                 {recommendedRate == null
-                  ? 'Рассчитает сервер при сохранении'
+                  ? requiresManualRate ? 'Укажите ставку вручную' : 'Рассчитает сервер при сохранении'
                   : `${recommendedRate}% годовых из рекомендации`}
               </dd>
             </div>
@@ -231,9 +238,25 @@ export function DecisionForm({
               </dd>
             </div>
           </dl>
+          <Input
+            name="finalRate"
+            label="Итоговая годовая ставка, %"
+            labelView="outer"
+            inputMode="decimal"
+            required={requiresManualRate}
+            value={values.finalRate}
+            onChange={(_, { value }) => changeField('finalRate', value)}
+            error={errors.finalRate}
+            hint={requiresManualRate
+              ? 'Расчётная ставка отсутствует. Для ручного одобрения укажите ставку от 0 до 100%.'
+              : 'Необязательно. Укажите свою ставку или оставьте поле пустым для серверного расчёта.'}
+            disabled={disabled || pending}
+            block
+          />
           <p className={styles.note}>
-            Сумма и срок соответствуют заявке. Сервер использует ставку из
-            рекомендации, если она указана, иначе рассчитает её при сохранении.
+            Сумма и срок соответствуют заявке. Указанная сотрудником ставка
+            имеет приоритет. Без неё сервер использует рекомендацию или тарифную
+            матрицу; при отсутствии расчётной ставки требуется ручной ввод.
             Показанный платёж скоринга рассчитан по базовой ставке, а не по
             ставке предложения. Платёж предложения рассчитает сервер.
             Просмотр условий не отправляет предложение клиенту.
@@ -287,10 +310,13 @@ export function DecisionForm({
             label="Изменить итоговую годовую ставку, %"
             labelView="outer"
             inputMode="decimal"
+            required={requiresManualRate}
             value={values.finalRate}
             onChange={(_, { value }) => changeField('finalRate', value)}
             error={errors.finalRate}
-            hint={`Необязательно. Без изменения: ${
+            hint={requiresManualRate
+              ? 'Обязательно: расчётная ставка отсутствует. Укажите значение от 0 до 100%.'
+              : `Необязательно. Без изменения: ${
               recommendedRate == null
                 ? 'ставку рассчитает сервер'
                 : `${recommendedRate}% из рекомендации`
@@ -309,8 +335,9 @@ export function DecisionForm({
               </p>
             )}
           <p className={styles.note}>
-            Все изменения независимы и необязательны. Пустые поля не отправляются;
-            сервер применит указанные выше значения по умолчанию. Платёж
+            Сумму и срок можно оставить без изменений. Ставка обязательна, если
+            сервер не может её рассчитать. Пустые поля не отправляются;
+            сервер применит доступные значения по умолчанию. Платёж
             предложения рассчитает сервер; скоринг исходной заявки здесь не
             пересчитывается.
           </p>

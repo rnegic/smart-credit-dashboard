@@ -19,8 +19,18 @@ const optionalInputSchema = z
   .optional()
   .transform((value) => (value === '' ? undefined : value))
 
+const optionalRateSchema = optionalInputSchema.pipe(
+  decimalSchema.pipe(
+    z.number().min(0, 'Ставка не может быть отрицательной').max(100, 'Ставка не более 100%'),
+  ).optional(),
+)
+
 export const decisionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('APPROVE'), comment: commentSchema }),
+  z.object({
+    action: z.literal('APPROVE'),
+    comment: commentSchema,
+    finalRate: optionalRateSchema,
+  }),
   z.object({ action: z.literal('DECLINE'), comment: commentSchema }),
   z.object({
     action: z.literal('OFFER_ALTERNATIVE'),
@@ -43,16 +53,7 @@ export const decisionSchema = z.discriminatedUnion('action', [
         .transform(Number)
         .optional(),
     ),
-    finalRate: optionalInputSchema.pipe(
-      decimalSchema
-        .pipe(
-          z
-            .number()
-            .min(0, 'Ставка не может быть отрицательной')
-            .max(100, 'Ставка не более 100%'),
-        )
-        .optional(),
-    ),
+    finalRate: optionalRateSchema,
   }),
 ])
 
