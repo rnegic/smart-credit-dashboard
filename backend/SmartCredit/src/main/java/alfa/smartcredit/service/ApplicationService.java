@@ -165,7 +165,8 @@ public class ApplicationService {
             case APPROVE -> {
                 // запрошенные клиентом условия; ставка из рекомендации (rate + премия класса + отраслевая) или расчёт заново
                 int termDays = termDaysOf(a);
-                BigDecimal finalRate = rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
+                BigDecimal finalRate = req.finalRate() != null ? req.finalRate()
+                        : rec != null && rec.finalRate() != null ? rec.finalRate() : manualFinalRate(a, termDays);
                 createOffer(a, a.getAmount(), termDays, finalRate);
                 a.setFinalRate(finalRate);
                 a.setStatus(ApplicationStatus.OFFER_READY);
@@ -209,7 +210,7 @@ public class ApplicationService {
 
     @Transactional
     public ApplicationView acceptOffer(Long companyId, Long offerId) {
-        Offer o = offerRepository.findById(offerId)
+        Offer o = offerRepository.findForUpdate(offerId)
                 .orElseThrow(() -> ApiException.notFound("Предложение не найдено"));
         if (!o.getCompanyId().equals(companyId)) throw ApiException.forbidden();
         Company company = companyRepository.findById(companyId).orElseThrow(ApiException::unauthorized);
@@ -229,9 +230,10 @@ public class ApplicationService {
         if (o.getValidUntil() == null || o.getValidUntil().isBefore(LocalDate.now()))
             throw new ApiException(HttpStatus.CONFLICT, "OFFER_EXPIRED", "Срок действия предложения истёк");
 
-        List<DocumentDto> docs = documentService.buildDocuments(company, a, o);
-        o.setDocuments(mapper.valueToTree(docs));
-        o.setDocumentVersion("1");
+        if (!hasCompleteDocuments(o)) {
+            o.setDocuments(mapper.valueToTree(documentService.buildDocuments(company, a, o)));
+            o.setDocumentVersion("1");
+        }
         o.setStatus(OfferStatus.ACCEPTED);
         a.setStatus(ApplicationStatus.SIGNATURE_PENDING);
 
@@ -256,7 +258,7 @@ public class ApplicationService {
 
     @Transactional
     public DocumentsResponse signOffer(Long companyId, Long userId, Long offerId, SignRequest req) {
-        Offer o = offerRepository.findById(offerId)
+        Offer o = offerRepository.findForUpdate(offerId)
                 .orElseThrow(() -> ApiException.notFound("Предложение не найдено"));
         if (!o.getCompanyId().equals(companyId)) throw ApiException.forbidden();
         CreditApplication a = find(o.getApplicationId());
@@ -275,14 +277,17 @@ public class ApplicationService {
                     "Сначала примите условия предложения");
         if (o.getValidUntil() == null || o.getValidUntil().isBefore(LocalDate.now()))
             throw new ApiException(HttpStatus.CONFLICT, "OFFER_EXPIRED", "Срок действия предложения истёк");
-        if (o.getDocuments() == null || !o.getDocuments().isArray() || o.getDocuments().size() == 0)
+        if (!hasCompleteDocuments(o))
             throw new ApiException(HttpStatus.CONFLICT, "NO_DOCUMENTS", "Документы не сформированы");
         if (!Boolean.TRUE.equals(req.confirmed()))
             throw new ApiException(HttpStatus.BAD_REQUEST, "NOT_CONFIRMED",
                     "Необходимо подтвердить ознакомление с документами");
-        if (o.getDocumentVersion() != null && !o.getDocumentVersion().equals(req.documentVersion()))
+        if (!o.getDocumentVersion().equals(req.documentVersion()))
             throw new ApiException(HttpStatus.CONFLICT, "DOCUMENT_VERSION_MISMATCH",
                     "Версия документов устарела, обновите страницу");
+        if (signer.getFullName() == null || signer.getFullName().isBlank())
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SIGNER_NAME_REQUIRED",
+                    "Для подписания заполните ФИО в профиле");
 
         o.setSignedAt(Instant.now());
         o.setSignedById(signer.getId());
@@ -310,7 +315,7 @@ public class ApplicationService {
                 && a.getStatus() == ApplicationStatus.SIGNATURE_PENDING
                 && o.getStatus() == OfferStatus.ACCEPTED
                 && o.getValidUntil() != null && !o.getValidUntil().isBefore(LocalDate.now())
-                && !docs.isEmpty();
+                && hasCompleteDocuments(o);
         DocumentsResponse.Signer signedBy = o.getSignedAt() != null && o.getSignedById() != null
                 ? new DocumentsResponse.Signer(o.getSignedById(), o.getSignedByFullName())
                 : null;
@@ -319,6 +324,22 @@ public class ApplicationService {
     }
 
     // ---------- helpers ----------
+
+    /** Only a complete, versioned pair of documents can be signed. */
+    private boolean hasCompleteDocuments(Offer offer) {
+        JsonNode docs = offer.getDocuments();
+        if (offer.getDocumentVersion() == null || offer.getDocumentVersion().isBlank()
+                || docs == null || !docs.isArray() || docs.size() != 2) return false;
+        boolean agreement = false, terms = false;
+        for (JsonNode doc : docs) {
+            if (doc.path("title").asText().isBlank() || doc.path("content").asText().isBlank()) return false;
+            String type = doc.path("type").asText();
+            if ("OVERDRAFT_AGREEMENT".equals(type) && !agreement) agreement = true;
+            else if ("INDIVIDUAL_TERMS".equals(type) && !terms) terms = true;
+            else return false;
+        }
+        return agreement && terms;
+    }
 
     private CreditApplication find(Long id) {
         return applicationRepository.findById(id).orElseThrow(() -> ApiException.notFound("Заявка не найдена"));
@@ -343,6 +364,9 @@ public class ApplicationService {
     }
 
     private void createOffer(CreditApplication a, BigDecimal amount, int termDays, BigDecimal finalRate) {
+        if (finalRate == null)
+            throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "FINAL_RATE_REQUIRED",
+                    "Для этой заявки нет расчётной ставки. Укажите итоговую годовую ставку вручную, чтобы одобрить заявку или предложить другие условия.");
         Offer o = new Offer();
         o.setCompanyId(a.getCompanyId());
         o.setApplicationId(a.getId());
@@ -353,6 +377,10 @@ public class ApplicationService {
         o.setMonthlyPayment(scoringService.monthlyPayment(amount, finalRate, termDays));
         o.setValidUntil(LocalDate.now().plusDays(14));
         o.setStatus(OfferStatus.ACTIVE);
+        Company company = companyRepository.findById(a.getCompanyId())
+                .orElseThrow(() -> ApiException.notFound("Компания не найдена"));
+        o.setDocuments(mapper.valueToTree(documentService.buildDocuments(company, a, o)));
+        o.setDocumentVersion("1");
         offerRepository.save(o);
     }
 
