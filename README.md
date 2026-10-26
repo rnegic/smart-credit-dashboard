@@ -175,10 +175,13 @@ flowchart TD
 | База данных | PostgreSQL 16, Flyway | Постоянное хранение и версионируемые SQL-миграции |
 | ML / LLM | Mistral Small 4; Spring RestClient, Apache HttpClient 5, Jackson 3 | Внешний инференс через OpenAI-совместимый HTTP API |
 | Сборка и доставка | Node.js 20 в Docker-сборке, Yarn 1.22.22, Gradle Wrapper 9.8.1, Docker Compose, Nginx, GitHub Actions / GHCR | Сборка контейнеров, раздача SPA и проксирование API |
+&nbsp;
 
-<img src="static/architecture.png" alt="Схема архитектуры приложения" width="350">
+<img src="static/architecture.png" alt="Схема архитектуры приложения">
 
+*Схема архитектуры веб-приложения*
 
+&nbsp;
 
 Версии и зависимости заданы в [frontend/package.json](frontend/package.json), [yarn.lock](frontend/yarn.lock) и [backend/SmartCredit/build.gradle](backend/SmartCredit/build.gradle).
 
