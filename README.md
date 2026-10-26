@@ -1,7 +1,7 @@
 # Альфа-Овердрафт — Умный кредитный кабинет предпринимателя
 
-<img src="static/alfaOverdraft_logo.png
-" alt="Логотип проекта" width="350">
+<img src="static/alfaOverdraft_logo.png" alt="Логотип проекта" width="350">
+
 
  ##  Проект уже развёрнут и доступен онлайн
 
